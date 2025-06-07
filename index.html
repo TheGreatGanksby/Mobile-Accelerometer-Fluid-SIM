@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Tuned</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer Tuning v2</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -86,10 +86,10 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 200; 
+    const BASE_GRAVITY_Y_ACCELERATION = 200; // This is the default downward pull in pixels/sec^2
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/60; 
-    const MAX_VEL_CELLS_PER_STEP = 0.7; // Slightly less strict cap          
+    const MAX_VEL_CELLS_PER_STEP = 0.6; // Slightly stricter cap again      
 
     const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
     const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
@@ -111,23 +111,23 @@
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
-        flipRatio: 0.9,          // Back to more FLIP for liveliness
-        numPressureIters: 100, 
+        flipRatio: 0.85, // Keep it a bit lower for stability         
+        numPressureIters: 120, // Keep high for stability
         numParticleIters: 3,   
-        overRelaxation: 1.0,      // Keep stable SOR
-        compensateDrift: false,   // Keep disabled
+        overRelaxation: 1.0,      
+        compensateDrift: false,  
         separateParticles: true,
     };
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 25; // Adjusted scaling factor
-    const GRAVITY_SMOOTHING_FACTOR = 0.5; // <<< INCREASED for less delay
+    const ACCEL_SCALING_FACTOR = 15; // <<< REDUCED scaling factor from raw accel to sim accel
+    const GRAVITY_SMOOTHING_FACTOR = 0.2; // <<< REDUCED smoothing (more responsive, but less smooth)
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
 
-       class FlipFluid {
+    class FlipFluid {
         constructor(density, simWidthPx, simHeightPx, cellSizePx, particleRadiusPx, maxParticles) {
             this.density = density;
             this.fNumX = Math.floor(simWidthPx / cellSizePx);
@@ -135,7 +135,6 @@
             this.h = cellSizePx;
             this.fInvSpacing = 1.0 / this.h;
             this.fNumCells = this.fNumX * this.fNumY;
-
             this.u = new Float32Array(this.fNumCells);
             this.v = new Float32Array(this.fNumCells);
             this.du = new Float32Array(this.fNumCells); 
@@ -145,19 +144,16 @@
             this.p = new Float32Array(this.fNumCells);  
             this.s = new Float32Array(this.fNumCells);  
             this.cellType = new Int32Array(this.fNumCells); 
-
             this.maxParticles = maxParticles;
             this.particlePos = new Float32Array(2 * this.maxParticles);
             this.particleVel = new Float32Array(2 * this.maxParticles);
             this.particleDensity = new Float32Array(this.fNumCells);
             this.particleRestDensity = 0.0;
-
             this.particleRadius = particleRadiusPx;
             this.pInvSpacing = 1.0 / (2.2 * particleRadiusPx); 
             this.pNumX = Math.floor(simWidthPx * this.pInvSpacing) + 1;
             this.pNumY = Math.floor(simHeightPx * this.pInvSpacing) + 1;
             this.pNumCells = this.pNumX * this.pNumY;
-
             this.numCellParticles = new Int32Array(this.pNumCells);
             this.firstCellParticle = new Int32Array(this.pNumCells + 1);
             this.cellParticleIds = new Int32Array(maxParticles);
