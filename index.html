@@ -1,14 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Tuning</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer Tuned</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-    body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #282c34; margin: 0; overflow: hidden; overscroll-behavior-y: contain;}
-    canvas { display: block; box-shadow: 0 0 15px rgba(0,0,0,0.5); touch-action: none; }
-    #permissionButton { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;}
-    #info, #debugInfo { position: absolute; left: 5px; color: lightgray; font-family: monospace; z-index: 100; background-color: rgba(0,0,0,0.6); padding: 5px; border-radius: 3px;}
+    body { 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        min-height: 100vh; 
+        background-color: #282c34; 
+        margin: 0; 
+        overflow: hidden; 
+        overscroll-behavior-y: contain;
+    }
+    canvas { 
+        display: block; 
+        box-shadow: 0 0 15px rgba(0,0,0,0.5); 
+        touch-action: none; 
+    }
+    #permissionButton {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 100;
+    }
+    #info, #debugInfo {
+        position: absolute;
+        left: 5px;
+        color: lightgray;
+        font-family: monospace;
+        z-index: 100;
+        background-color: rgba(0,0,0,0.6);
+        padding: 5px;
+        border-radius: 3px;
+    }
     #info { top: 5px; font-size: 12px;}
     #debugInfo { bottom: 5px; font-size: 10px; max-height: 120px; overflow-y: auto; width: calc(100% - 20px);}
 </style>
@@ -51,10 +86,10 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 0; // <<< No base Y gravity for this test, purely accelerometer driven
+    const BASE_GRAVITY_Y_ACCELERATION = 200; 
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/60; 
-    const MAX_VEL_CELLS_PER_STEP = 0.7; // Allow a bit more speed before cap          
+    const MAX_VEL_CELLS_PER_STEP = 0.7; // Slightly less strict cap          
 
     const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
     const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
@@ -76,24 +111,23 @@
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
-        flipRatio: 0.9,          // Back to more FLIP
+        flipRatio: 0.9,          // Back to more FLIP for liveliness
         numPressureIters: 100, 
         numParticleIters: 3,   
-        overRelaxation: 1.0,      
-        compensateDrift: false,  
+        overRelaxation: 1.0,      // Keep stable SOR
+        compensateDrift: false,   // Keep disabled
         separateParticles: true,
     };
 
     let currentSimGravityX = 0;
-    let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; // Will start at 0
-    const ACCEL_SCALING_FACTOR = 30; // Raw m/s^2 to sim pixels/s^2. Increased for more effect.
-                                     // If raw is ~10 m/s^2, this gives ~300 pixels/s^2 which should be very noticeable.
-    const GRAVITY_SMOOTHING_FACTOR = 0.6; // <<< INCREASED for less delay (60% new data, 40% old)
+    let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
+    const ACCEL_SCALING_FACTOR = 25; // Adjusted scaling factor
+    const GRAVITY_SMOOTHING_FACTOR = 0.5; // <<< INCREASED for less delay
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
 
-        class FlipFluid {
+    class FlipFluid {
         constructor(density, simWidthPx, simHeightPx, cellSizePx, particleRadiusPx, maxParticles) {
             this.density = density;
             this.fNumX = Math.floor(simWidthPx / cellSizePx);
@@ -148,7 +182,7 @@
                 const velSq = vx * vx + vy * vy; 
                 if (velSq > maxVelSq) { 
                     const speed = Math.sqrt(velSq); 
-                    if (speed === 0) continue; // Avoid division by zero if somehow velSq > 0 but speed is 0
+                    if (speed < 1e-9) continue; // Avoid division by zero if somehow velSq > 0 but speed is effectively 0
                     const factor = maxVelocityMagnitude / speed; 
                     this.particleVel[2 * i] *= factor; 
                     this.particleVel[2 * i + 1] *= factor; 
@@ -198,7 +232,7 @@
                                 var dx_val = qx - px; var dy_val = qy - py; 
                                 var d2 = dx_val * dx_val + dy_val * dy_val; 
                                 if (d2 > minDist2 || d2 < 1e-9) continue; 
-                                if (d2 < 1e-9 && d2 !== 0) { // Should ideally not happen if minDist2 is robust
+                                if (d2 < 1e-9 && d2 !== 0) { 
                                     const pushFactor = 0.1 * this.particleRadius; 
                                     this.particlePos[2*i] -= (Math.random()-0.5) * pushFactor; 
                                     this.particlePos[2*i+1] -= (Math.random()-0.5) * pushFactor; 
@@ -207,7 +241,7 @@
                                     continue; 
                                 } 
                                 var d_sqrt = Math.sqrt(d2); 
-                                if (d_sqrt < 1e-9) continue; // Avoid division by zero for s_factor
+                                if (d_sqrt < 1e-9) continue;
                                 var s_factor = 0.5 * (minDist - d_sqrt) / d_sqrt; 
                                 dx_val *= s_factor; dy_val *= s_factor; 
                                 this.particlePos[2 * i] -= dx_val; this.particlePos[2 * i + 1] -= dy_val; 
@@ -330,7 +364,7 @@
                                     this.s[gx * nY + (gy - 1)] + this.s[gx * nY + gy]; 
                         if (s_sum < 1e-9) continue; 
                         if (this.particleRestDensity > 0.0 && compensateDriftVal) { 
-                            var k_drift = 0.0; 
+                            var k_drift = 0.0; // Keep disabled for now
                             var compression = this.particleDensity[centerIdx] - this.particleRestDensity; 
                             if (compression > 0.0) div -= k_drift * compression / sdt; 
                         } 
@@ -432,10 +466,9 @@
         let debugString = "";
         if (event.accelerationIncludingGravity) {
             let acc = event.accelerationIncludingGravity;
-            // Ensure properties exist and are numbers, default to 0 otherwise
-            let rawX = (typeof acc.x === 'number' && isFinite(acc.x)) ? acc.x : 0;
+            let rawX = (typeof acc.x === 'number' && isFinite(acc.x)) ? acc.x : 0; 
             let rawY = (typeof acc.y === 'number' && isFinite(acc.y)) ? acc.y : 0;
-            let rawZ = (typeof acc.z === 'number' && isFinite(acc.z)) ? acc.z : 0;
+            let rawZ = (typeof acc.z === 'number' && isFinite(acc.z)) ? acc.z : 0; 
 
             debugString += `AIG Raw: x=${rawX.toFixed(1)}, y=${rawY.toFixed(1)}, z=${rawZ.toFixed(1)}<br>`;
 
@@ -445,10 +478,8 @@
             if (screenOrientation === "portrait") {
                 targetSimGx = rawX * ACCEL_SCALING_FACTOR;
                 targetSimGy = BASE_GRAVITY_Y_ACCELERATION - rawY * ACCEL_SCALING_FACTOR; 
-            } else { // Landscape (assuming primary landscape is home button to the right)
-                targetSimGx = rawY * ACCEL_SCALING_FACTOR; // Device Y (now horizontal) maps to Sim X
-                // Device X (now vertical). If positive rawX is "device right down", this is "screen top down".
-                // So we add to base gravity.
+            } else { 
+                targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
                 targetSimGy = BASE_GRAVITY_Y_ACCELERATION + rawX * ACCEL_SCALING_FACTOR; 
             }
             
@@ -461,7 +492,7 @@
             debugString += `TargetSimG: x=${targetSimGx.toFixed(1)}, y=${targetSimGy.toFixed(1)}<br>`;
 
         } else {
-            debugString += "event.accelerationIncludingGravity is null/undefined.<br>";
+            debugString += "event.accelerationIncludingGravity is null or undefined.<br>";
             if (infoDiv) infoDiv.textContent = "Accel: No AIG data in event.";
         }
          if (event.acceleration) {
