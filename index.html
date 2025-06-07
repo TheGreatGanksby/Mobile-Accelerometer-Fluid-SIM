@@ -127,7 +127,7 @@
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
 
-    class FlipFluid {
+       class FlipFluid {
         constructor(density, simWidthPx, simHeightPx, cellSizePx, particleRadiusPx, maxParticles) {
             this.density = density;
             this.fNumX = Math.floor(simWidthPx / cellSizePx);
@@ -182,7 +182,7 @@
                 const velSq = vx * vx + vy * vy; 
                 if (velSq > maxVelSq) { 
                     const speed = Math.sqrt(velSq); 
-                    if (speed < 1e-9) continue; // Avoid division by zero if somehow velSq > 0 but speed is effectively 0
+                    if (speed < 1e-9) continue; 
                     const factor = maxVelocityMagnitude / speed; 
                     this.particleVel[2 * i] *= factor; 
                     this.particleVel[2 * i + 1] *= factor; 
@@ -364,7 +364,7 @@
                                     this.s[gx * nY + (gy - 1)] + this.s[gx * nY + gy]; 
                         if (s_sum < 1e-9) continue; 
                         if (this.particleRestDensity > 0.0 && compensateDriftVal) { 
-                            var k_drift = 0.0; // Keep disabled for now
+                            var k_drift = 0.0; 
                             var compression = this.particleDensity[centerIdx] - this.particleRestDensity; 
                             if (compression > 0.0) div -= k_drift * compression / sdt; 
                         } 
