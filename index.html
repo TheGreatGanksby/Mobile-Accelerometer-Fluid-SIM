@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Tuning v3</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer Direct Mapping</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -51,10 +51,10 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 150; // Pixels/sec^2
-    const DAMPING = 0.2;                           
-    const FIXED_TIME_STEP = 1/120;                 // SLOWER TIMESTEP
-    const MAX_VEL_CELLS_PER_STEP = 0.5;            // STRICTER VELOCITY CAP
+    const BASE_GRAVITY_Y_ACCELERATION = 0; // <<< NO base Y gravity, purely accelerometer driven for this test
+    const DAMPING = 0.3; // Slightly more bounce than 0.2
+    const FIXED_TIME_STEP = 1/60; // Back to 1/60, if stable
+    const MAX_VEL_CELLS_PER_STEP = 0.7; // Less strict cap if sim is stable enough         
 
     const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
     const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
@@ -76,18 +76,22 @@
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
-        flipRatio: 0.8,          
-        numPressureIters: 150,    
-        numParticleIters: 4,      
+        flipRatio: 0.9,          
+        numPressureIters: 100, 
+        numParticleIters: 3,   
         overRelaxation: 1.0,      
         compensateDrift: false,  
         separateParticles: true,
     };
 
     let currentSimGravityX = 0;
-    let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 15; 
-    const GRAVITY_SMOOTHING_FACTOR = 0.4; // <<< Increased from 0.2 for more responsiveness
+    let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; // Will start at 0 for this test
+    // ACCEL_SCALING_FACTOR: How many units of sim acceleration per m/s^2 from device.
+    // A common device reading for 1G is 9.8 m/s^2.
+    // If we want 1G device tilt to equal roughly BASE_GRAVITY_Y_ACCELERATION if it were, say, 200:
+    // Then ACCEL_SCALING_FACTOR would be 200 / 9.8 = ~20.
+    const ACCEL_SCALING_FACTOR = 30; // Let's make it quite sensitive
+    const GRAVITY_SMOOTHING_FACTOR = 0.4; // <<< INCREASED smoothing for less delay, but not instant
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
