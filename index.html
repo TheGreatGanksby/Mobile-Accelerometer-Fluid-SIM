@@ -1,14 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Tuning v3</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer Remap</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-    body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #282c34; margin: 0; overflow: hidden; overscroll-behavior-y: contain;}
-    canvas { display: block; box-shadow: 0 0 15px rgba(0,0,0,0.5); touch-action: none; }
-    #permissionButton { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;}
-    #info, #debugInfo { position: absolute; left: 5px; color: lightgray; font-family: monospace; z-index: 100; background-color: rgba(0,0,0,0.6); padding: 5px; border-radius: 3px;}
+    body { 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        min-height: 100vh; 
+        background-color: #282c34; 
+        margin: 0; 
+        overflow: hidden; 
+        overscroll-behavior-y: contain;
+    }
+    canvas { 
+        display: block; 
+        box-shadow: 0 0 15px rgba(0,0,0,0.5); 
+        touch-action: none; 
+    }
+    #permissionButton {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 100;
+    }
+    #info, #debugInfo {
+        position: absolute;
+        left: 5px;
+        color: lightgray;
+        font-family: monospace;
+        z-index: 100;
+        background-color: rgba(0,0,0,0.6);
+        padding: 5px;
+        border-radius: 3px;
+    }
     #info { top: 5px; font-size: 12px;}
     #debugInfo { bottom: 5px; font-size: 10px; max-height: 120px; overflow-y: auto; width: calc(100% - 20px);}
 </style>
@@ -51,7 +86,7 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 150; // Pixels/sec^2
+    const BASE_GRAVITY_Y_ACCELERATION = 0; // <<< NO BASE Y-GRAVITY FOR THIS TEST
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/120;                 // SLOWER TIMESTEP
     const MAX_VEL_CELLS_PER_STEP = 0.5;            // STRICTER VELOCITY CAP
@@ -86,8 +121,8 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 15; 
-    const GRAVITY_SMOOTHING_FACTOR = 0.4; // <<< Increased from 0.2 for more responsiveness
+    const ACCEL_SCALING_FACTOR = 30; // How much 1m/s^2 from device translates to sim pixels/s^2
+    const GRAVITY_SMOOTHING_FACTOR = 0.3; 
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -100,6 +135,7 @@
             this.h = cellSizePx;
             this.fInvSpacing = 1.0 / this.h;
             this.fNumCells = this.fNumX * this.fNumY;
+
             this.u = new Float32Array(this.fNumCells);
             this.v = new Float32Array(this.fNumCells);
             this.du = new Float32Array(this.fNumCells); 
@@ -109,16 +145,19 @@
             this.p = new Float32Array(this.fNumCells);  
             this.s = new Float32Array(this.fNumCells);  
             this.cellType = new Int32Array(this.fNumCells); 
+
             this.maxParticles = maxParticles;
             this.particlePos = new Float32Array(2 * this.maxParticles);
             this.particleVel = new Float32Array(2 * this.maxParticles);
             this.particleDensity = new Float32Array(this.fNumCells);
             this.particleRestDensity = 0.0;
+
             this.particleRadius = particleRadiusPx;
             this.pInvSpacing = 1.0 / (2.2 * particleRadiusPx); 
             this.pNumX = Math.floor(simWidthPx * this.pInvSpacing) + 1;
             this.pNumY = Math.floor(simHeightPx * this.pInvSpacing) + 1;
             this.pNumCells = this.pNumX * this.pNumY;
+
             this.numCellParticles = new Int32Array(this.pNumCells);
             this.firstCellParticle = new Int32Array(this.pNumCells + 1);
             this.cellParticleIds = new Int32Array(maxParticles);
@@ -436,14 +475,30 @@
             let screenOrientation = (window.innerHeight > window.innerWidth) ? "portrait" : "landscape";
             let targetSimGx, targetSimGy;
             
+            // For "tilt table" like control where fluid flows in direction of tilt relative to screen
+            // Simulation: +X right, +Y down
+            // Device Portrait: +rawX right-edge-down, +rawY top-edge-down (away from user), +rawZ screen-face-down
+            
             if (screenOrientation === "portrait") {
+                // Tilt phone right (positive rawX) -> fluid goes right (positive simGx)
                 targetSimGx = rawX * ACCEL_SCALING_FACTOR;
-                targetSimGy = BASE_GRAVITY_Y_ACCELERATION - rawY * ACCEL_SCALING_FACTOR; 
-            } else { 
-                targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
-                targetSimGy = BASE_GRAVITY_Y_ACCELERATION + rawX * ACCEL_SCALING_FACTOR; 
+                // Tilt phone top edge towards user (negative rawY) -> fluid goes UP screen (negative simGy)
+                // Tilt phone top edge away from user (positive rawY) -> fluid goes DOWN screen (positive simGy)
+                targetSimGy = rawY * ACCEL_SCALING_FACTOR; 
+            } else { // Landscape: Assuming phone rotated 90deg CCW (home button to the right)
+                     // Device Y-axis (was top edge) is now along screen's X-axis (pointing right)
+                     // Device X-axis (was right edge) is now along screen's Y-axis (pointing up)
+                
+                // Tilt phone "right" in landscape (was top edge, positive rawY) -> fluid goes right (positive simGx)
+                targetSimGx = rawY * ACCEL_SCALING_FACTOR;
+                // Tilt phone "down" in landscape (was right edge, positive rawX) -> fluid goes UP screen (negative simGy)
+                targetSimGy = -rawX * ACCEL_SCALING_FACTOR; // Negative because positive rawX is now "up" the screen
             }
             
+            // Add base gravity if you want it independent of tilt (e.g. always some pull "down the screen")
+            // If BASE_GRAVITY_Y_ACCELERATION is > 0, it will always add a downward pull
+            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
+
             currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
             currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
             
@@ -454,7 +509,10 @@
 
         } else {
             debugString += "event.accelerationIncludingGravity is null or undefined.<br>";
-            if (infoDiv) infoDiv.textContent = "Accel: No AIG data in event.";
+            // Fallback to default gravity if no accelerometer data
+            currentSimGravityX = 0; 
+            currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
+            if (infoDiv) infoDiv.textContent = "Accel: No AIG data in event. Using default G.";
         }
          if (event.acceleration) {
             let accOnly = event.acceleration;
