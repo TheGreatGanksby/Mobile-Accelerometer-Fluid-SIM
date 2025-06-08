@@ -1,50 +1,14 @@
-Here's the current code we're running:
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer (Syntax Fix 7)</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer Tuning v3</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-    body { 
-        display: flex; 
-        justify-content: center; 
-        align-items: center; 
-        min-height: 100vh; 
-        background-color: #282c34; 
-        margin: 0; 
-        overflow: hidden; 
-        overscroll-behavior-y: contain;
-    }
-    canvas { 
-        display: block; 
-        box-shadow: 0 0 15px rgba(0,0,0,0.5); 
-        touch-action: none; 
-    }
-    #permissionButton {
-        position: absolute;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 10px 20px;
-        font-size: 16px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        z-index: 100;
-    }
-    #info, #debugInfo {
-        position: absolute;
-        left: 5px;
-        color lightgray;
-        font-family: monospace;
-        z-index: 100;
-        background-color: rgba(0,0,0,0.6);
-        padding: 5px;
-        border-radius: 3px;
-    }
+    body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #282c34; margin: 0; overflow: hidden; overscroll-behavior-y: contain;}
+    canvas { display: block; box-shadow: 0 0 15px rgba(0,0,0,0.5); touch-action: none; }
+    #permissionButton { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;}
+    #info, #debugInfo { position: absolute; left: 5px; color: lightgray; font-family: monospace; z-index: 100; background-color: rgba(0,0,0,0.6); padding: 5px; border-radius: 3px;}
     #info { top: 5px; font-size: 12px;}
     #debugInfo { bottom: 5px; font-size: 10px; max-height: 120px; overflow-y: auto; width: calc(100% - 20px);}
 </style>
@@ -53,6 +17,7 @@ Here's the current code we're running:
 <div id="info">Accelerometer: Initializing...</div>
 <div id="debugInfo">Debug Log:<br></div>
 <canvas id="ledDisplayCanvas"></canvas>
+
 <script>
     const canvas = document.getElementById('ledDisplayCanvas');
     const ctx = canvas.getContext('2d');
@@ -68,8 +33,7 @@ Here's the current code we're running:
     }
 
     // --- Configuration ---
-    const GRID_DIM_X = 16; 
-    const GRID_DIM_Y = 16;
+    const GRID_DIM_X = 16; const GRID_DIM_Y = 16;
     const CORNER_CUT_GEOMETRIC = 5; 
     const CORNER_CUT_FOR_LEDS = 4;  
 
@@ -81,55 +45,31 @@ Here's the current code we're running:
     const INV_CELL_SIZE_X = 1.0 / CELL_SIZE_X; 
     const INV_CELL_SIZE_Y = 1.0 / CELL_SIZE_Y;
 
-    const HORIZONTAL_PADDING_RATIO = 0.10; 
-    const ASPECT_RATIO_W_H = 1.8;
-    let LED_PADDING_X = CELL_SIZE_X * HORIZONTAL_PADDING_RATIO; 
-    let LED_SIZE_X = CELL_SIZE_X - 2 * LED_PADDING_X;
-    let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; 
-    let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
-    if (LED_PADDING_Y < 0) { 
-        console.warn("LED size fallback"); 
-        const PADDING_RATIO = 0.15; 
-        LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; 
-        LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; 
-        LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; 
-        LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; 
-    }
+    const HORIZONTAL_PADDING_RATIO = 0.10; const ASPECT_RATIO_W_H = 1.8;
+    let LED_PADDING_X = CELL_SIZE_X * HORIZONTAL_PADDING_RATIO; let LED_SIZE_X = CELL_SIZE_X - 2 * LED_PADDING_X;
+    let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
+    if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 200; 
+    const BASE_GRAVITY_Y_ACCELERATION = 150; // Pixels/sec^2
     const DAMPING = 0.2;                           
-    const FIXED_TIME_STEP = 1/60; 
-    const MAX_VEL_CELLS_PER_STEP = 0.5;          
+    const FIXED_TIME_STEP = 1/120;                 // SLOWER TIMESTEP
+    const MAX_VEL_CELLS_PER_STEP = 0.5;            // STRICTER VELOCITY CAP
 
-    const HG_CELL_AIR = 1; 
-    const HG_CELL_SOLID = 2;
-    const FLUID_CELL = 0; 
-    const AIR_CELL = 1; 
-    const SOLID_CELL = 2;
+    const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
+    const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
 
-    const COLOR_LED_ON = '#00FF00'; 
-    const COLOR_LED_OFF = '#333333'; 
-    const COLOR_LED_GLOW = 'rgba(0, 255, 0, 0.4)'; 
-    const COLOR_BORDER = '#B8860B'; 
-    const COLOR_RING = '#FFD700'; 
-    const COLOR_BACKGROUND = '#282c34';
+    const COLOR_LED_ON = '#00FF00'; const COLOR_LED_OFF = '#333333'; const COLOR_LED_GLOW = 'rgba(0, 255, 0, 0.4)'; const COLOR_BORDER = '#B8860B'; const COLOR_RING = '#FFD700'; const COLOR_BACKGROUND = '#282c34';
 
-    canvas.width = CANVAS_SIZE; 
-    canvas.height = CANVAS_SIZE;
+    canvas.width = CANVAS_SIZE; canvas.height = CANVAS_SIZE;
 
     let timeAccumulator = 0;
-    let octagonVertices = []; 
-    let octagonNormals = []; 
-    let simOctagonVertices = []; 
-    const gridResX = GRID_DIM_X; 
-    const gridResY = GRID_DIM_Y;
-    const cellCols = gridResX; 
-    const cellRows = gridResY;
+    let octagonVertices = []; let octagonNormals = []; let simOctagonVertices = []; 
+    const gridResX = GRID_DIM_X; const gridResY = GRID_DIM_Y;
+    const cellCols = gridResX; const cellRows = gridResY;
     let hexGridCellType = new Int32Array(cellCols * cellRows); 
     let gridState = []; 
-    let ledPositionLUT = []; 
-    let gridToLedIndexMap = null;
+    let ledPositionLUT = []; let gridToLedIndexMap = null;
     const EXPECTED_LED_COUNT = 216;
 
     let flipFluid = null;
@@ -137,8 +77,8 @@ Here's the current code we're running:
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
         flipRatio: 0.8,          
-        numPressureIters: 100, 
-        numParticleIters: 3,   
+        numPressureIters: 150,    
+        numParticleIters: 4,      
         overRelaxation: 1.0,      
         compensateDrift: false,  
         separateParticles: true,
@@ -147,7 +87,7 @@ Here's the current code we're running:
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
     const ACCEL_SCALING_FACTOR = 15; 
-    const GRAVITY_SMOOTHING_FACTOR = 0.2; 
+    const GRAVITY_SMOOTHING_FACTOR = 0.4; // <<< Increased from 0.2 for more responsiveness
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -160,7 +100,6 @@ Here's the current code we're running:
             this.h = cellSizePx;
             this.fInvSpacing = 1.0 / this.h;
             this.fNumCells = this.fNumX * this.fNumY;
-
             this.u = new Float32Array(this.fNumCells);
             this.v = new Float32Array(this.fNumCells);
             this.du = new Float32Array(this.fNumCells); 
@@ -170,19 +109,16 @@ Here's the current code we're running:
             this.p = new Float32Array(this.fNumCells);  
             this.s = new Float32Array(this.fNumCells);  
             this.cellType = new Int32Array(this.fNumCells); 
-
             this.maxParticles = maxParticles;
             this.particlePos = new Float32Array(2 * this.maxParticles);
             this.particleVel = new Float32Array(2 * this.maxParticles);
             this.particleDensity = new Float32Array(this.fNumCells);
             this.particleRestDensity = 0.0;
-
             this.particleRadius = particleRadiusPx;
             this.pInvSpacing = 1.0 / (2.2 * particleRadiusPx); 
             this.pNumX = Math.floor(simWidthPx * this.pInvSpacing) + 1;
             this.pNumY = Math.floor(simHeightPx * this.pInvSpacing) + 1;
             this.pNumCells = this.pNumX * this.pNumY;
-
             this.numCellParticles = new Int32Array(this.pNumCells);
             this.firstCellParticle = new Int32Array(this.pNumCells + 1);
             this.cellParticleIds = new Int32Array(maxParticles);
