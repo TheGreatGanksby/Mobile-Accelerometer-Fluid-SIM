@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Remap v2</title>
+<title>Octagonal LED FLIP Fluid - Leak Fix Attempt 2</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -50,8 +50,8 @@
     let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
-    const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 150; // <<< RE-INTRODUCED a base downward pull
+    const NUM_PARTICLES = 300; // Kept your increased particle count
+    const BASE_GRAVITY_Y_ACCELERATION = 150; 
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/120;                 
     const MAX_VEL_CELLS_PER_STEP = 0.5;            
@@ -76,7 +76,7 @@
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
-        flipRatio: 0.8,          
+        flipRatio: 0.4,          
         numPressureIters: 150,    
         numParticleIters: 4,      
         overRelaxation: 1.0,      
@@ -86,8 +86,8 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 20; // Moderate scaling factor
-    const GRAVITY_SMOOTHING_FACTOR = 0.4; // More responsive
+    const ACCEL_SCALING_FACTOR = 15; 
+    const GRAVITY_SMOOTHING_FACTOR = 0.4; 
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -216,8 +216,10 @@
         
         handleParticleCollisions() { 
             var r = this.particleRadius; 
-            var minX = r; var maxX = this.fNumX * this.h - r; 
-            var minY = r; var maxY = this.fNumY * this.h - r; 
+            var minX = r + 1e-6; // Nudge slightly inward
+            var maxX = this.fNumX * this.h - r - 1e-6; 
+            var minY = r + 1e-6; 
+            var maxY = this.fNumY * this.h - r - 1e-6; 
             for (var i = 0; i < this.numParticles; i++) { 
                 var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1]; 
                 var vx = this.particleVel[2 * i]; var vy = this.particleVel[2 * i + 1]; 
@@ -361,7 +363,7 @@
     function setupOctagonGeometry(){ octagonVertices=[];octagonNormals=[];const C=CORNER_CUT_GEOMETRIC*CELL_SIZE_X,GA=GRID_AREA_SIZE;octagonVertices.push({x:MARGIN+C,y:MARGIN});octagonVertices.push({x:MARGIN+GA-C,y:MARGIN});octagonVertices.push({x:MARGIN+GA,y:MARGIN+C});octagonVertices.push({x:MARGIN+GA,y:MARGIN+GA-C});octagonVertices.push({x:MARGIN+GA-C,y:MARGIN+GA});octagonVertices.push({x:MARGIN+C,y:MARGIN+GA});octagonVertices.push({x:MARGIN,y:MARGIN+GA-C});octagonVertices.push({x:MARGIN,y:MARGIN+C});for(let i=0;i<8;i++){const p1=octagonVertices[i],p2=octagonVertices[(i+1)%8];const dx=p2.x-p1.x,dy=p2.y-p1.y;let nx=-dy,ny=dx;const l=Math.sqrt(nx*nx+ny*ny);if(l>1e-9){nx/=l;ny/=l;}const cX=MARGIN+GA/2,cY=MARGIN+GA/2;const mX=(p1.x+p2.x)/2,mY=(p1.y+p2.y)/2;const vX=cX-mX,vY=cY-mY;if(nx*vX+ny*vY<0){nx*=-1;ny*=-1;}octagonNormals.push({x:nx,y:ny});}}
     function isInsideSimOctagon(sim_px,sim_py){ for(let i=0;i<8;i++){const v1=simOctagonVertices[i],n=octagonNormals[i];if((sim_px-v1.x)*n.x+(sim_py-v1.y)*n.y<-1e-5)return false;}return true;}
     function initializeHexGridCellTypes(){ const s_cut=CORNER_CUT_FOR_LEDS;for(let gx=0;gx<cellCols;gx++){for(let gy=0;gy<cellRows;gy++){const idx=gx*cellRows+gy;let iS=false;if(gx+gy<s_cut)iS=true;if((gridResX-1-gx)+gy<s_cut)iS=true;if(gx+(gridResY-1-gy)<s_cut)iS=true;if((gridResX-1-gx)+(gridResY-1-gy)<s_cut)iS=true;if(iS){hexGridCellType[idx]=HG_CELL_SOLID;}else{hexGridCellType[idx]=HG_CELL_AIR;}}}}
-    function enforceParticleOctagonCollisionFF(fl,sOV,oN){ const rst=DAMPING,rTh=fl.particleRadius*0.5; /* Increased rTh */ for(let pI=0;pI<fl.numParticles;pI++){let px=fl.particlePos[2*pI],py=fl.particlePos[2*pI+1],pvx=fl.particleVel[2*pI],pvy=fl.particleVel[2*pI+1];for(let i=0;i<8;i++){const v1=sOV[i],n=oN[i],dist=(px-v1.x)*n.x+(py-v1.y)*n.y;if(dist<rTh){const pen=rTh-dist + 1e-6; /* Add small epsilon to push further */ px+=pen*n.x;py+=pen*n.y;const vn=pvx*n.x+pvy*n.y;if(vn<0){pvx-=(1+rst)*vn*n.x;pvy-=(1+rst)*vn*n.y;}}}fl.particlePos[2*pI]=px;fl.particlePos[2*pI+1]=py;fl.particleVel[2*pI]=pvx;fl.particleVel[2*pI+1]=pvy;}}
+    function enforceParticleOctagonCollisionFF(fl,sOV,oN){ const rst=DAMPING,rTh=fl.particleRadius*0.5;for(let pI=0;pI<fl.numParticles;pI++){let px=fl.particlePos[2*pI],py=fl.particlePos[2*pI+1],pvx=fl.particleVel[2*pI],pvy=fl.particleVel[2*pI+1];for(let i=0;i<8;i++){const v1=sOV[i],n=oN[i],dist=(px-v1.x)*n.x+(py-v1.y)*n.y;if(dist<rTh){const pen=rTh-dist;px+=pen*n.x;py+=pen*n.y;const vn=pvx*n.x+pvy*n.y;if(vn<0){pvx-=(1+rst)*vn*n.x;pvy-=(1+rst)*vn*n.y;}}}fl.particlePos[2*pI]=px;fl.particlePos[2*pI+1]=py;fl.particleVel[2*pI]=pvx;fl.particleVel[2*pI+1]=pvy;}}
     
     function init() { 
         setupOctagonGeometry(); 
@@ -403,7 +405,7 @@
             } 
         } 
         let placedParticles = 0; let attempts = 0; 
-        const initialParticleVelScale = CELL_SIZE_X * 0.0001; // Very small initial random velocity
+        const initialParticleVelScale = CELL_SIZE_X * 0.001; 
         const placeMargin = particleRadiusPx * 3; 
         while (placedParticles < NUM_PARTICLES && attempts < NUM_PARTICLES * 8000) { 
             const px_sim = placeMargin + Math.random() * (GRID_AREA_SIZE - 2 * placeMargin); 
@@ -412,7 +414,7 @@
                 flipFluid.particlePos[2 * placedParticles] = px_sim; 
                 flipFluid.particlePos[2 * placedParticles + 1] = py_sim; 
                 flipFluid.particleVel[2 * placedParticles] = (Math.random() - 0.5) * 0.5 * initialParticleVelScale; 
-                flipFluid.particleVel[2 * placedParticles + 1] = (Math.random() * 0.05 + 0.01) * currentSimGravityY * FIXED_TIME_STEP; // Start with a tiny fraction of initial gravity
+                flipFluid.particleVel[2 * placedParticles + 1] = (Math.random() * 0.2 + 0.1) * currentSimGravityY * FIXED_TIME_STEP; 
                 placedParticles++; 
             } attempts++; 
         } 
@@ -439,14 +441,12 @@
             if (screenOrientation === "portrait") {
                 targetSimGx = rawX * ACCEL_SCALING_FACTOR;
                 targetSimGy = rawY * ACCEL_SCALING_FACTOR; 
-            } else { // Landscape (primary: home button right, phone rotated 90 deg CCW from portrait)
+            } else { 
                 targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
                 targetSimGy = -rawX * ACCEL_SCALING_FACTOR; 
             }
             
-            // Add base gravity if BASE_GRAVITY_Y_ACCELERATION is non-zero.
-            // If it's 0, then gravity is purely from tilt.
-            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
+            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; // Add base gravity after tilt calculation if BASE_GRAVITY_Y_ACCELERATION is non-zero
 
             currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
             currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
