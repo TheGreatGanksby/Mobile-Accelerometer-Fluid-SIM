@@ -37,7 +37,7 @@
     const CORNER_CUT_GEOMETRIC = 5; 
     const CORNER_CUT_FOR_LEDS = 4;  
 
-    const CANVAS_SIZE = Math.min(window.innerWidth - 20, window.innerHeight - 60, 600); 
+    const CANVAS_SIZE = Math.min(window.innerWidth - 20, window.innerHeight - 60, 1000); 
     const MARGIN = CANVAS_SIZE * 0.116;; 
     const GRID_AREA_SIZE = CANVAS_SIZE - 2 * MARGIN; 
     const CELL_SIZE_X = GRID_AREA_SIZE / GRID_DIM_X; 
@@ -80,7 +80,7 @@
         numPressureIters: 150,    
         numParticleIters: 4,      
         overRelaxation: 1.0,      
-        compensateDrift: true,  
+        compensateDrift: false,  
         separateParticles: true,
     };
 
