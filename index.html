@@ -622,11 +622,35 @@ function render() {
     ctx.arc(cX, cY, rad, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Small circle code has been removed from here.
-} // <<<<<<<<<<<< ENSURE THIS CLOSING BRACE IS PRESENT
+    
+}
 
     
-    let lastTime = 0; function gameLoop(timestamp) { if(!flipFluid && !document.getElementById('ledDisplayCanvas')) { requestAnimationFrame(gameLoop); return; } if (lastTime === 0) lastTime = timestamp; const frameTime = Math.min(0.1, (timestamp - lastTime) / 1000); lastTime = timestamp; timeAccumulator += frameTime; while (timeAccumulator >= FIXED_TIME_STEP) { updateSimulationStep(FIXED_TIME_STEP); timeAccumulator -= FIXED_TIME_STEP; } render(); requestAnimationFrame(gameLoop); }
+ let lastTime = 0;
+
+    function gameLoop(timestamp) {
+        if (!flipFluid && !document.getElementById('ledDisplayCanvas')) {
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        if (lastTime === 0) {
+            lastTime = timestamp;
+        }
+
+        const frameTime = Math.min(0.1, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        timeAccumulator += frameTime;
+
+        while (timeAccumulator >= FIXED_TIME_STEP) {
+            updateSimulationStep(FIXED_TIME_STEP);
+            timeAccumulator -= FIXED_TIME_STEP;
+        }
+
+        render();
+        requestAnimationFrame(gameLoop);
+    }
 
     init();
     requestAnimationFrame(gameLoop);
