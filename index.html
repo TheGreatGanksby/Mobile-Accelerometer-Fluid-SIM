@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Remap v4 (X-Invert)</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer X-Axis Fix</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -50,8 +50,8 @@
     let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
-    const NUM_PARTICLES = 150; 
-    const BASE_GRAVITY_Y_ACCELERATION = 0; 
+    const NUM_PARTICLES = 300; 
+    const BASE_GRAVITY_Y_ACCELERATION = 0.8; 
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/120;                 
     const MAX_VEL_CELLS_PER_STEP = 0.5;            
@@ -76,7 +76,7 @@
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
-        flipRatio: 0.8,          
+        flipRatio: 0.2,          
         numPressureIters: 150,    
         numParticleIters: 4,      
         overRelaxation: 1.0,      
@@ -86,7 +86,7 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 20; 
+    const ACCEL_SCALING_FACTOR = 15; 
     const GRAVITY_SMOOTHING_FACTOR = 0.4; 
 
 
@@ -405,7 +405,7 @@
             } 
         } 
         let placedParticles = 0; let attempts = 0; 
-        const initialParticleVelScale = CELL_SIZE_X * 0.0005; // Very small initial random velocity
+        const initialParticleVelScale = CELL_SIZE_X * 0.0005; 
         const placeMargin = particleRadiusPx * 3; 
         while (placedParticles < NUM_PARTICLES && attempts < NUM_PARTICLES * 8000) { 
             const px_sim = placeMargin + Math.random() * (GRID_AREA_SIZE - 2 * placeMargin); 
@@ -439,14 +439,21 @@
             let targetSimGx, targetSimGy;
             
             if (screenOrientation === "portrait") {
-                targetSimGx = -rawX * ACCEL_SCALING_FACTOR; // Inverted X
-                targetSimGy = rawY * ACCEL_SCALING_FACTOR;  // Direct Y
-            } else { // Landscape (home button to the right)
-                targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
-                targetSimGy = rawX * ACCEL_SCALING_FACTOR; // rawX in this landscape becomes "down the screen" if +rawX was right-edge-down in portrait
+                targetSimGx = rawX * ACCEL_SCALING_FACTOR; // If tilting right makes rawX positive, this pushes fluid right.
+                targetSimGy = rawY * ACCEL_SCALING_FACTOR; // If tilting top AWAY from user makes rawY positive, this pushes fluid DOWN.
+                                                          // To make fluid go UP when top edge tilted TOWARDS USER (usually negative rawY),
+                                                          // you might need targetSimGy = rawY * ACCEL_SCALING_FACTOR (since -rawY * +scale = -simY force = UP)
+                                                          // OR targetSimGy = -rawY * ACCEL_SCALING_FACTOR if your rawY sign is opposite.
+                                                          // For now, using direct mapping. rawY positive -> simY positive (down)
+            } else { // Landscape (assuming primary: home button right, phone rotated 90 deg CCW from portrait)
+                targetSimGx = rawY * ACCEL_SCALING_FACTOR; // Device Y (now horizontal right) directly maps to sim X
+                targetSimGy = -rawX * ACCEL_SCALING_FACTOR; // Device X (now vertical up) maps to sim Y (inverted, so +rawX (device right/screen top down) results in -simY (up))
+                                                            // This landscape Y might be inverted for your desire.
+                                                            // If +rawX (device right-edge-down in portrait, now top-edge-down in landscape) should make fluid go DOWN (+simY),
+                                                            // then targetSimGy should be rawX * ACCEL_SCALING_FACTOR
             }
             
-            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
+            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; // Add base gravity (currently 0, so no effect)
 
             currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
             currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
