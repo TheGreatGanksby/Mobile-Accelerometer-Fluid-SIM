@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer X-Axis ISOLATION Test</title>
+<title>Octagonal LED FLIP Fluid - Focused X-Axis Invert on BEST BASE</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -32,7 +32,7 @@
         }
     }
 
-    // --- Configuration ---
+    // --- Configuration (FROM YOUR "BEST VERSION.html") ---
     const GRID_DIM_X = 16; const GRID_DIM_Y = 16;
     const CORNER_CUT_GEOMETRIC = 5; 
     const CORNER_CUT_FOR_LEDS = 4;  
@@ -51,7 +51,7 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 300; 
-    const BASE_GRAVITY_Y_ACCELERATION = 0.8; // From your "BEST VERSION"
+    const BASE_GRAVITY_Y_ACCELERATION = 0.8; 
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/120;                 
     const MAX_VEL_CELLS_PER_STEP = 0.5;            
@@ -75,7 +75,7 @@
     let flipFluid = null;
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
-    const simParams = { // From your "BEST VERSION"
+    const simParams = { 
         flipRatio: 0.2,          
         numPressureIters: 150,    
         numParticleIters: 4,      
@@ -86,7 +86,6 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    // These will be effectively overridden by the test constants in handleDeviceMotion for this test
     const ACCEL_SCALING_FACTOR = 15; 
     const GRAVITY_SMOOTHING_FACTOR = 0.4; 
 
@@ -440,11 +439,23 @@
             let targetSimGx, targetSimGy;
             
             if (screenOrientation === "portrait") {
-                targetSimGx = rawX * ACCEL_SCALING_FACTOR; // Direct mapping for X
-                targetSimGy = rawY * ACCEL_SCALING_FACTOR; // Direct mapping for Y
-            } else { // Landscape (assuming primary: home button right, phone rotated 90 deg CCW from portrait)
-                targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
-                targetSimGy = -rawX * ACCEL_SCALING_FACTOR; // Inverted X for Y in landscape
+                // If tilting right (positive rawX on most devices) makes fluid go LEFT (negative sim Gx), then we need -rawX.
+                targetSimGx = -rawX * ACCEL_SCALING_FACTOR; // <<< INVERTED based on your observation
+                
+                // If tilting top TOWARDS user (negative rawY) makes fluid go UP (negative simGy):
+                // targetSimGy = rawY * ACCEL_SCALING_FACTOR; // This would be correct for that.
+                // If tilting top TOWARDS user makes fluid go DOWN (current issue), then this needs inversion.
+                // Let's assume for now Y is also inverted relative to the direct desire:
+                targetSimGy = -rawY * ACCEL_SCALING_FACTOR; // <<< TRY INVERTING Y AS WELL
+
+            } else { // Landscape (assuming phone rotated 90 deg CCW, home button to the right)
+                // Device Y (was top edge) is now along screen's X-axis (pointing right).
+                // If portrait Y needed inversion, this might too.
+                targetSimGx = -rawY * ACCEL_SCALING_FACTOR;  // Apply similar inversion logic
+                
+                // Device X (was right edge) is now along screen's Y-axis (pointing up).
+                // If portrait X needed inversion, this might too.
+                targetSimGy = rawX * ACCEL_SCALING_FACTOR; // If positive rawX (device right-edge-down) is now top-of-screen-down, this causes downward force
             }
             
             targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
