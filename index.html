@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Corrected Accel Mapping on BEST BASE</title>
+<title>Octagonal LED FLIP Fluid - Dynamic Base Pull</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -25,24 +25,24 @@
     const debugDiv = document.getElementById('debugInfo');
 
     function logDebug(message) {
-        console.log(message); 
+        console.log(message);
         if (debugDiv) {
             debugDiv.innerHTML += message + "<br>";
-            debugDiv.scrollTop = debugDiv.scrollHeight; 
+            debugDiv.scrollTop = debugDiv.scrollHeight;
         }
     }
 
-    // --- Configuration (FROM YOUR "BEST VERSION.html") ---
+    // --- Configuration ---
     const GRID_DIM_X = 16; const GRID_DIM_Y = 16;
-    const CORNER_CUT_GEOMETRIC = 5; 
-    const CORNER_CUT_FOR_LEDS = 4;  
+    const CORNER_CUT_GEOMETRIC = 5;
+    const CORNER_CUT_FOR_LEDS = 4;
 
-    const CANVAS_SIZE = Math.min(window.innerWidth - 20, window.innerHeight - 60, 1000); 
-    const MARGIN = CANVAS_SIZE * 0.116;; 
-    const GRID_AREA_SIZE = CANVAS_SIZE - 2 * MARGIN; 
-    const CELL_SIZE_X = GRID_AREA_SIZE / GRID_DIM_X; 
-    const CELL_SIZE_Y = GRID_AREA_SIZE / GRID_DIM_Y; 
-    const INV_CELL_SIZE_X = 1.0 / CELL_SIZE_X; 
+    const CANVAS_SIZE = Math.min(window.innerWidth - 20, window.innerHeight - 60, 1000);
+    const MARGIN = CANVAS_SIZE * 0.116;
+    const GRID_AREA_SIZE = CANVAS_SIZE - 2 * MARGIN;
+    const CELL_SIZE_X = GRID_AREA_SIZE / GRID_DIM_X;
+    const CELL_SIZE_Y = GRID_AREA_SIZE / GRID_DIM_Y;
+    const INV_CELL_SIZE_X = 1.0 / CELL_SIZE_X;
     const INV_CELL_SIZE_Y = 1.0 / CELL_SIZE_Y;
 
     const HORIZONTAL_PADDING_RATIO = 0.10; const ASPECT_RATIO_W_H = 1.8;
@@ -50,11 +50,11 @@
     let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
-    const NUM_PARTICLES = 220; 
-    const BASE_GRAVITY_Y_ACCELERATION = 0.0; 
-    const DAMPING = 0.3;                           
-    const FIXED_TIME_STEP = 1/360;                 
-    const MAX_VEL_CELLS_PER_STEP = 5.0;            
+    const NUM_PARTICLES = 220;
+    const DYNAMIC_BASE_PULL_MAGNITUDE = 8.0; // NEW: Minimum strength of gravity when tilted. Tune this!
+    const DAMPING = 0.3;
+    const FIXED_TIME_STEP = 1/360; // User's value
+    const MAX_VEL_CELLS_PER_STEP = 5.0; // User's value
 
     const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
     const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
@@ -64,30 +64,30 @@
     canvas.width = CANVAS_SIZE; canvas.height = CANVAS_SIZE;
 
     let timeAccumulator = 0;
-    let octagonVertices = []; let octagonNormals = []; let simOctagonVertices = []; 
+    let octagonVertices = []; let octagonNormals = []; let simOctagonVertices = [];
     const gridResX = GRID_DIM_X; const gridResY = GRID_DIM_Y;
     const cellCols = gridResX; const cellRows = gridResY;
-    let hexGridCellType = new Int32Array(cellCols * cellRows); 
-    let gridState = []; 
+    let hexGridCellType = new Int32Array(cellCols * cellRows);
+    let gridState = [];
     let ledPositionLUT = []; let gridToLedIndexMap = null;
     const EXPECTED_LED_COUNT = 216;
 
     let flipFluid = null;
-    const FLIP_FLUID_DENSITY = 1.0; 
-    const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
-    const simParams = { 
-        flipRatio: 0.4,          
-        numPressureIters: 150,    
-        numParticleIters: 4,      
-        overRelaxation: 1.0,      
-        compensateDrift: false,  
+    const FLIP_FLUID_DENSITY = 1.0;
+    const FLIP_PARTICLE_RADIUS_FACTOR = 0.3;
+    const simParams = {
+        flipRatio: 0.4, // User's value
+        numPressureIters: 150,
+        numParticleIters: 4,
+        overRelaxation: 1.0,
+        compensateDrift: false, // User's value
         separateParticles: true,
     };
-
-    let currentSimGravityX = 0;
-    let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 15; 
-    const GRAVITY_SMOOTHING_FACTOR = 1.0; 
+// Base forces before Dynamic gravity
+    let currentSimGravityX = 0; 
+    let currentSimGravityY = 0; 
+    const ACCEL_SCALING_FACTOR = 20; // Tuned: This scales the direct accelerometer input strength
+    const GRAVITY_SMOOTHING_FACTOR = 0.7; // Tuned: For a more responsive feel
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -103,13 +103,13 @@
 
             this.u = new Float32Array(this.fNumCells);
             this.v = new Float32Array(this.fNumCells);
-            this.du = new Float32Array(this.fNumCells); 
-            this.dv = new Float32Array(this.fNumCells); 
+            this.du = new Float32Array(this.fNumCells);
+            this.dv = new Float32Array(this.fNumCells);
             this.prevU = new Float32Array(this.fNumCells);
             this.prevV = new Float32Array(this.fNumCells);
-            this.p = new Float32Array(this.fNumCells);  
-            this.s = new Float32Array(this.fNumCells);  
-            this.cellType = new Int32Array(this.fNumCells); 
+            this.p = new Float32Array(this.fNumCells);
+            this.s = new Float32Array(this.fNumCells);
+            this.cellType = new Int32Array(this.fNumCells);
 
             this.maxParticles = maxParticles;
             this.particlePos = new Float32Array(2 * this.maxParticles);
@@ -118,7 +118,7 @@
             this.particleRestDensity = 0.0;
 
             this.particleRadius = particleRadiusPx;
-            this.pInvSpacing = 1.0 / (2.2 * particleRadiusPx); 
+            this.pInvSpacing = 1.0 / (2.2 * particleRadiusPx);
             this.pNumX = Math.floor(simWidthPx * this.pInvSpacing) + 1;
             this.pNumY = Math.floor(simHeightPx * this.pInvSpacing) + 1;
             this.pNumCells = this.pNumX * this.pNumY;
@@ -128,239 +128,239 @@
             this.cellParticleIds = new Int32Array(maxParticles);
             this.numParticles = 0;
         }
-        
-        integrateParticles(dt, gravityX_acc, gravityY_acc) { 
+
+        integrateParticles(dt, gravityX_acc, gravityY_acc) {
             for (var i = 0; i < this.numParticles; i++) {
-                this.particleVel[2 * i]     += dt * gravityX_acc; 
-                this.particleVel[2 * i + 1] += dt * gravityY_acc; 
-                this.particlePos[2 * i]     += this.particleVel[2 * i] * dt;     
-                this.particlePos[2 * i + 1] += this.particleVel[2 * i + 1] * dt; 
+                this.particleVel[2 * i]     += dt * gravityX_acc;
+                this.particleVel[2 * i + 1] += dt * gravityY_acc;
+                this.particlePos[2 * i]     += this.particleVel[2 * i] * dt;
+                this.particlePos[2 * i + 1] += this.particleVel[2 * i + 1] * dt;
             }
         }
 
-        capParticleVelocities(sdt) { 
-            const maxVelocityMagnitude = MAX_VEL_CELLS_PER_STEP * this.h / sdt; 
-            const maxVelSq = maxVelocityMagnitude * maxVelocityMagnitude; 
-            for (let i = 0; i < this.numParticles; i++) { 
-                const vx = this.particleVel[2 * i]; 
-                const vy = this.particleVel[2 * i + 1]; 
-                const velSq = vx * vx + vy * vy; 
-                if (velSq > maxVelSq) { 
-                    const speed = Math.sqrt(velSq); 
-                    if (speed < 1e-9) continue; 
-                    const factor = maxVelocityMagnitude / speed; 
-                    this.particleVel[2 * i] *= factor; 
-                    this.particleVel[2 * i + 1] *= factor; 
-                } 
-            } 
+        capParticleVelocities(sdt) {
+            const maxVelocityMagnitude = MAX_VEL_CELLS_PER_STEP * this.h / sdt;
+            const maxVelSq = maxVelocityMagnitude * maxVelocityMagnitude;
+            for (let i = 0; i < this.numParticles; i++) {
+                const vx = this.particleVel[2 * i];
+                const vy = this.particleVel[2 * i + 1];
+                const velSq = vx * vx + vy * vy;
+                if (velSq > maxVelSq) {
+                    const speed = Math.sqrt(velSq);
+                    if (speed < 1e-9) continue;
+                    const factor = maxVelocityMagnitude / speed;
+                    this.particleVel[2 * i] *= factor;
+                    this.particleVel[2 * i + 1] *= factor;
+                }
+            }
         }
 
-        pushParticlesApart(numIters) { 
-            this.numCellParticles.fill(0); 
-            for (var i = 0; i < this.numParticles; i++) { 
-                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1]; 
-                var xi = clamp(Math.floor(x * this.pInvSpacing), 0, this.pNumX - 1); 
-                var yi = clamp(Math.floor(y * this.pInvSpacing), 0, this.pNumY - 1); 
-                var cellNr = xi * this.pNumY + yi; 
-                this.numCellParticles[cellNr]++; 
-            } 
-            var first = 0; 
-            for (var i = 0; i < this.pNumCells; i++) { 
-                first += this.numCellParticles[i]; 
-                this.firstCellParticle[i] = first; 
-            } 
-            this.firstCellParticle[this.pNumCells] = first; 
-            for (var i = 0; i < this.numParticles; i++) { 
-                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1]; 
-                var xi = clamp(Math.floor(x * this.pInvSpacing), 0, this.pNumX - 1); 
-                var yi = clamp(Math.floor(y * this.pInvSpacing), 0, this.pNumY - 1); 
-                var cellNr = xi * this.pNumY + yi; 
-                this.firstCellParticle[cellNr]--; 
-                this.cellParticleIds[this.firstCellParticle[cellNr]] = i; 
-            } 
-            var minDist = 2.0 * this.particleRadius; var minDist2 = minDist * minDist; 
-            for (var iter = 0; iter < numIters; iter++) { 
-                for (var i = 0; i < this.numParticles; i++) { 
-                    var px = this.particlePos[2 * i]; var py = this.particlePos[2 * i + 1]; 
-                    var pxi = Math.floor(px * this.pInvSpacing); var pyi = Math.floor(py * this.pInvSpacing); 
-                    var x0 = Math.max(pxi - 1, 0); var y0 = Math.max(pyi - 1, 0); 
-                    var x1 = Math.min(pxi + 1, this.pNumX - 1); var y1 = Math.min(pyi + 1, this.pNumY - 1); 
-                    for (var xi = x0; xi <= x1; xi++) { 
-                        for (var yi = y0; yi <= y1; yi++) { 
-                            var cellNr = xi * this.pNumY + yi; 
-                            var firstIdx = this.firstCellParticle[cellNr]; 
-                            var lastIdx = this.firstCellParticle[cellNr + 1]; 
-                            for (var j = firstIdx; j < lastIdx; j++) { 
-                                var id = this.cellParticleIds[j]; 
-                                if (id == i) continue; 
-                                var qx = this.particlePos[2 * id]; var qy = this.particlePos[2 * id + 1]; 
-                                var dx_val = qx - px; var dy_val = qy - py; 
-                                var d2 = dx_val * dx_val + dy_val * dy_val; 
-                                if (d2 > minDist2 || d2 < 1e-9) continue; 
-                                if (d2 < 1e-9 && d2 !== 0) { 
-                                    const pushFactor = 0.1 * this.particleRadius; 
-                                    this.particlePos[2*i] -= (Math.random()-0.5) * pushFactor; 
-                                    this.particlePos[2*i+1] -= (Math.random()-0.5) * pushFactor; 
-                                    this.particlePos[2*id] += (Math.random()-0.5) * pushFactor; 
-                                    this.particlePos[2*id+1] += (Math.random()-0.5) * pushFactor; 
-                                    continue; 
-                                } 
-                                var d_sqrt = Math.sqrt(d2); 
+        pushParticlesApart(numIters) {
+            this.numCellParticles.fill(0);
+            for (var i = 0; i < this.numParticles; i++) {
+                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1];
+                var xi = clamp(Math.floor(x * this.pInvSpacing), 0, this.pNumX - 1);
+                var yi = clamp(Math.floor(y * this.pInvSpacing), 0, this.pNumY - 1);
+                var cellNr = xi * this.pNumY + yi;
+                this.numCellParticles[cellNr]++;
+            }
+            var first = 0;
+            for (var i = 0; i < this.pNumCells; i++) {
+                first += this.numCellParticles[i];
+                this.firstCellParticle[i] = first;
+            }
+            this.firstCellParticle[this.pNumCells] = first;
+            for (var i = 0; i < this.numParticles; i++) {
+                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1];
+                var xi = clamp(Math.floor(x * this.pInvSpacing), 0, this.pNumX - 1);
+                var yi = clamp(Math.floor(y * this.pInvSpacing), 0, this.pNumY - 1);
+                var cellNr = xi * this.pNumY + yi;
+                this.firstCellParticle[cellNr]--;
+                this.cellParticleIds[this.firstCellParticle[cellNr]] = i;
+            }
+            var minDist = 2.0 * this.particleRadius; var minDist2 = minDist * minDist;
+            for (var iter = 0; iter < numIters; iter++) {
+                for (var i = 0; i < this.numParticles; i++) {
+                    var px = this.particlePos[2 * i]; var py = this.particlePos[2 * i + 1];
+                    var pxi = Math.floor(px * this.pInvSpacing); var pyi = Math.floor(py * this.pInvSpacing);
+                    var x0 = Math.max(pxi - 1, 0); var y0 = Math.max(pyi - 1, 0);
+                    var x1 = Math.min(pxi + 1, this.pNumX - 1); var y1 = Math.min(pyi + 1, this.pNumY - 1);
+                    for (var xi = x0; xi <= x1; xi++) {
+                        for (var yi = y0; yi <= y1; yi++) {
+                            var cellNr = xi * this.pNumY + yi;
+                            var firstIdx = this.firstCellParticle[cellNr];
+                            var lastIdx = this.firstCellParticle[cellNr + 1];
+                            for (var j = firstIdx; j < lastIdx; j++) {
+                                var id = this.cellParticleIds[j];
+                                if (id == i) continue;
+                                var qx = this.particlePos[2 * id]; var qy = this.particlePos[2 * id + 1];
+                                var dx_val = qx - px; var dy_val = qy - py;
+                                var d2 = dx_val * dx_val + dy_val * dy_val;
+                                if (d2 > minDist2 || d2 < 1e-9) continue;
+                                if (d2 < 1e-9 && d2 !== 0) {
+                                    const pushFactor = 0.1 * this.particleRadius;
+                                    this.particlePos[2*i] -= (Math.random()-0.5) * pushFactor;
+                                    this.particlePos[2*i+1] -= (Math.random()-0.5) * pushFactor;
+                                    this.particlePos[2*id] += (Math.random()-0.5) * pushFactor;
+                                    this.particlePos[2*id+1] += (Math.random()-0.5) * pushFactor;
+                                    continue;
+                                }
+                                var d_sqrt = Math.sqrt(d2);
                                 if (d_sqrt < 1e-9) continue;
-                                var s_factor = 0.5 * (minDist - d_sqrt) / d_sqrt; 
-                                dx_val *= s_factor; dy_val *= s_factor; 
-                                this.particlePos[2 * i] -= dx_val; this.particlePos[2 * i + 1] -= dy_val; 
-                                this.particlePos[2 * id] += dx_val; this.particlePos[2 * id + 1] += dy_val; 
-                            } 
-                        } 
-                    } 
-                } 
-            } 
-        }
-        
-        handleParticleCollisions() { 
-            var r = this.particleRadius; 
-            var minX = r + 1e-6; 
-            var maxX = this.fNumX * this.h - r - 1e-6; 
-            var minY = r + 1e-6; 
-            var maxY = this.fNumY * this.h - r - 1e-6; 
-            for (var i = 0; i < this.numParticles; i++) { 
-                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1]; 
-                var vx = this.particleVel[2 * i]; var vy = this.particleVel[2 * i + 1]; 
-                if (x < minX) { x = minX; if(vx < 0) vx *= -DAMPING; } 
-                if (x > maxX) { x = maxX; if(vx > 0) vx *= -DAMPING; } 
-                if (y < minY) { y = minY; if(vy < 0) vy *= -DAMPING; } 
-                if (y > maxY) { y = maxY; if(vy > 0) vy *= -DAMPING; } 
-                this.particlePos[2*i] = x; this.particlePos[2*i+1] = y; 
-                this.particleVel[2*i] = vx; this.particleVel[2*i+1] = vy; 
-            } 
-        }
-
-        updateParticleDensity() { 
-            var nY = this.fNumY; var h = this.h; var h1 = this.fInvSpacing; var h2 = 0.5 * h; 
-            this.particleDensity.fill(0.0); 
-            for (var i = 0; i < this.numParticles; i++) { 
-                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1]; 
-                x = clamp(x, h2, (this.fNumX - 0.5) * h); y = clamp(y, h2, (this.fNumY - 0.5) * h); 
-                var x0 = Math.floor((x - h2) * h1); var tx = ((x - h2) - x0 * h) * h1; var x1 = x0 + 1; 
-                var y0 = Math.floor((y - h2) * h1); var ty = ((y - h2) - y0 * h) * h1; var y1 = y0 + 1; 
-                var sx = 1.0 - tx; var sy = 1.0 - ty; 
-                var w0 = sx * sy, w1 = tx * sy, w2 = tx * ty, w3 = sx * ty; 
-                var nr0 = x0 * nY + y0, nr1 = x1 * nY + y0, nr2 = x1 * nY + y1, nr3 = x0 * nY + y1; 
-                if (x0 >=0 && x0 < this.fNumX && y0 >=0 && y0 < this.fNumY && nr0 >=0 && nr0 < this.fNumCells) { this.particleDensity[nr0] += w0; } 
-                if (x1 >=0 && x1 < this.fNumX && y0 >=0 && y0 < this.fNumY && nr1 >=0 && nr1 < this.fNumCells) { this.particleDensity[nr1] += w1; } 
-                if (x1 >=0 && x1 < this.fNumX && y1 >=0 && y1 < this.fNumY && nr2 >=0 && nr2 < this.fNumCells) { this.particleDensity[nr2] += w2; } 
-                if (x0 >=0 && x0 < this.fNumX && y1 >=0 && y1 < this.fNumY && nr3 >=0 && nr3 < this.fNumCells) { this.particleDensity[nr3] += w3; } 
-            } 
-            if (this.particleRestDensity == 0.0 && this.numParticles > 0) { 
-                var sum = 0.0; var numFluidCellsActive = 0; 
-                for (var i = 0; i < this.fNumCells; i++) { 
-                    if (this.cellType[i] == FLUID_CELL) { sum += this.particleDensity[i]; numFluidCellsActive++; } 
-                } 
-                if (numFluidCellsActive > 0) this.particleRestDensity = sum / numFluidCellsActive; 
-                else this.particleRestDensity = 1.0; 
-            } else if (this.numParticles === 0) {
-                this.particleRestDensity = 1.0; 
+                                var s_factor = 0.5 * (minDist - d_sqrt) / d_sqrt;
+                                dx_val *= s_factor; dy_val *= s_factor;
+                                this.particlePos[2 * i] -= dx_val; this.particlePos[2 * i + 1] -= dy_val;
+                                this.particlePos[2 * id] += dx_val; this.particlePos[2 * id + 1] += dy_val;
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        isCellFluidForVelocity(cell_idx, component) { 
-            if (cell_idx < 0 || cell_idx >= this.fNumCells) return false; 
-            let other_cell_idx = -1; 
-            let current_gx = Math.floor(cell_idx / this.fNumY); 
-            let current_gy = cell_idx % this.fNumY; 
-            if (component === 0) { 
-                if (current_gx + 1 < this.fNumX) other_cell_idx = (current_gx + 1) * this.fNumY + current_gy; 
-            } else { 
-                if (current_gy + 1 < this.fNumY) other_cell_idx = current_gx * this.fNumY + (current_gy + 1); 
-            } 
-            return this.cellType[cell_idx] === FLUID_CELL || 
-                   (other_cell_idx !== -1 && other_cell_idx < this.fNumCells && this.cellType[other_cell_idx] === FLUID_CELL); 
+        handleParticleCollisions() {
+            var r = this.particleRadius;
+            var minX = r + 1e-6;
+            var maxX = this.fNumX * this.h - r - 1e-6;
+            var minY = r + 1e-6;
+            var maxY = this.fNumY * this.h - r - 1e-6;
+            for (var i = 0; i < this.numParticles; i++) {
+                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1];
+                var vx = this.particleVel[2 * i]; var vy = this.particleVel[2 * i + 1];
+                if (x < minX) { x = minX; if(vx < 0) vx *= -DAMPING; }
+                if (x > maxX) { x = maxX; if(vx > 0) vx *= -DAMPING; }
+                if (y < minY) { y = minY; if(vy < 0) vy *= -DAMPING; }
+                if (y > maxY) { y = maxY; if(vy > 0) vy *= -DAMPING; }
+                this.particlePos[2*i] = x; this.particlePos[2*i+1] = y;
+                this.particleVel[2*i] = vx; this.particleVel[2*i+1] = vy;
+            }
         }
-        
-        transferVelocities(toGrid, flipRatio) { 
-            var nY=this.fNumY,h=this.h,h1=this.fInvSpacing,h2=0.5*h; 
-            if(toGrid){ 
-                this.prevU.set(this.u);this.prevV.set(this.v);this.du.fill(0.0);this.dv.fill(0.0);this.u.fill(0.0);this.v.fill(0.0); 
-                for(var i=0;i<this.fNumCells;i++){ 
-                    if(this.s[i]!==0.0)this.cellType[i]=AIR_CELL; else this.cellType[i]=SOLID_CELL; 
-                } 
-                for(var i=0;i<this.numParticles;i++){var x=this.particlePos[2*i],y=this.particlePos[2*i+1];var xi=clamp(Math.floor(x*h1),0,this.fNumX-1),yi=clamp(Math.floor(y*h1),0,this.fNumY-1);var cN=xi*nY+yi;if(cN>=0&&cN<this.fNumCells&&this.cellType[cN]==AIR_CELL)this.cellType[cN]=FLUID_CELL;} 
-            } 
-            for(var comp=0;comp<2;comp++){ 
-                var dx_s=(comp==0)?0.0:h2,dy_s=(comp==0)?h2:0.0; 
-                var fv=(comp==0)?this.u:this.v,pfv=(comp==0)?this.prevU:this.prevV,dw=(comp==0)?this.du:this.dv; 
-                for(var i=0;i<this.numParticles;i++){var x=this.particlePos[2*i],y=this.particlePos[2*i+1];x=clamp(x,h2,(this.fNumX-0.5)*h);y=clamp(y,h2,(this.fNumY-0.5)*h);var x0=Math.floor((x-dx_s)*h1),tx=((x-dx_s)-x0*h)*h1,x1=x0+1;var y0=Math.floor((y-dy_s)*h1),ty=((y-dy_s)-y0*h)*h1,y1=y0+1;var sx=1.0-tx,sy=1.0-ty;var s0=sx*sy,s1=tx*sy,s2=tx*ty,s3=sx*ty;var nr0=x0*nY+y0,nr1=x1*nY+y0,nr2=x1*nY+y1,nr3=x0*nY+y1; 
-                    if(toGrid){var pv=this.particleVel[2*i+comp];if(nr0>=0&&nr0<this.fNumCells){fv[nr0]+=pv*s0;dw[nr0]+=s0;}if(nr1>=0&&nr1<this.fNumCells){fv[nr1]+=pv*s1;dw[nr1]+=s1;}if(nr2>=0&&nr2<this.fNumCells){fv[nr2]+=pv*s2;dw[nr2]+=s2;}if(nr3>=0&&nr3<this.fNumCells){fv[nr3]+=pv*s3;dw[nr3]+=s3;}} 
+
+        updateParticleDensity() {
+            var nY = this.fNumY; var h = this.h; var h1 = this.fInvSpacing; var h2 = 0.5 * h;
+            this.particleDensity.fill(0.0);
+            for (var i = 0; i < this.numParticles; i++) {
+                var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1];
+                x = clamp(x, h2, (this.fNumX - 0.5) * h); y = clamp(y, h2, (this.fNumY - 0.5) * h);
+                var x0 = Math.floor((x - h2) * h1); var tx = ((x - h2) - x0 * h) * h1; var x1 = x0 + 1;
+                var y0 = Math.floor((y - h2) * h1); var ty = ((y - h2) - y0 * h) * h1; var y1 = y0 + 1;
+                var sx = 1.0 - tx; var sy = 1.0 - ty;
+                var w0 = sx * sy, w1 = tx * sy, w2 = tx * ty, w3 = sx * ty;
+                var nr0 = x0 * nY + y0, nr1 = x1 * nY + y0, nr2 = x1 * nY + y1, nr3 = x0 * nY + y1;
+                if (x0 >=0 && x0 < this.fNumX && y0 >=0 && y0 < this.fNumY && nr0 >=0 && nr0 < this.fNumCells) { this.particleDensity[nr0] += w0; }
+                if (x1 >=0 && x1 < this.fNumX && y0 >=0 && y0 < this.fNumY && nr1 >=0 && nr1 < this.fNumCells) { this.particleDensity[nr1] += w1; }
+                if (x1 >=0 && x1 < this.fNumX && y1 >=0 && y1 < this.fNumY && nr2 >=0 && nr2 < this.fNumCells) { this.particleDensity[nr2] += w2; }
+                if (x0 >=0 && x0 < this.fNumX && y1 >=0 && y1 < this.fNumY && nr3 >=0 && nr3 < this.fNumCells) { this.particleDensity[nr3] += w3; }
+            }
+            if (this.particleRestDensity == 0.0 && this.numParticles > 0) {
+                var sum = 0.0; var numFluidCellsActive = 0;
+                for (var i = 0; i < this.fNumCells; i++) {
+                    if (this.cellType[i] == FLUID_CELL) { sum += this.particleDensity[i]; numFluidCellsActive++; }
+                }
+                if (numFluidCellsActive > 0) this.particleRestDensity = sum / numFluidCellsActive;
+                else this.particleRestDensity = 1.0;
+            } else if (this.numParticles === 0) {
+                this.particleRestDensity = 1.0;
+            }
+        }
+
+        isCellFluidForVelocity(cell_idx, component) {
+            if (cell_idx < 0 || cell_idx >= this.fNumCells) return false;
+            let other_cell_idx = -1;
+            let current_gx = Math.floor(cell_idx / this.fNumY);
+            let current_gy = cell_idx % this.fNumY;
+            if (component === 0) { // u-component (horizontal velocity)
+                if (current_gx + 1 < this.fNumX) other_cell_idx = (current_gx + 1) * this.fNumY + current_gy;
+            } else { // v-component (vertical velocity)
+                if (current_gy + 1 < this.fNumY) other_cell_idx = current_gx * this.fNumY + (current_gy + 1);
+            }
+            return this.cellType[cell_idx] === FLUID_CELL ||
+                   (other_cell_idx !== -1 && other_cell_idx < this.fNumCells && this.cellType[other_cell_idx] === FLUID_CELL);
+        }
+
+        transferVelocities(toGrid, flipRatio) {
+            var nY=this.fNumY,h=this.h,h1=this.fInvSpacing,h2=0.5*h;
+            if(toGrid){
+                this.prevU.set(this.u);this.prevV.set(this.v);this.du.fill(0.0);this.dv.fill(0.0);this.u.fill(0.0);this.v.fill(0.0);
+                for(var i=0;i<this.fNumCells;i++){
+                    if(this.s[i]!==0.0)this.cellType[i]=AIR_CELL; else this.cellType[i]=SOLID_CELL;
+                }
+                for(var i=0;i<this.numParticles;i++){var x=this.particlePos[2*i],y=this.particlePos[2*i+1];var xi=clamp(Math.floor(x*h1),0,this.fNumX-1),yi=clamp(Math.floor(y*h1),0,this.fNumY-1);var cN=xi*nY+yi;if(cN>=0&&cN<this.fNumCells&&this.cellType[cN]==AIR_CELL)this.cellType[cN]=FLUID_CELL;}
+            }
+            for(var comp=0;comp<2;comp++){
+                var dx_s=(comp==0)?0.0:h2,dy_s=(comp==0)?h2:0.0;
+                var fv=(comp==0)?this.u:this.v,pfv=(comp==0)?this.prevU:this.prevV,dw=(comp==0)?this.du:this.dv;
+                for(var i=0;i<this.numParticles;i++){var x=this.particlePos[2*i],y=this.particlePos[2*i+1];x=clamp(x,h2,(this.fNumX-0.5)*h);y=clamp(y,h2,(this.fNumY-0.5)*h);var x0=Math.floor((x-dx_s)*h1),tx=((x-dx_s)-x0*h)*h1,x1=x0+1;var y0=Math.floor((y-dy_s)*h1),ty=((y-dy_s)-y0*h)*h1,y1=y0+1;var sx=1.0-tx,sy=1.0-ty;var s0=sx*sy,s1=tx*sy,s2=tx*ty,s3=sx*ty;var nr0=x0*nY+y0,nr1=x1*nY+y0,nr2=x1*nY+y1,nr3=x0*nY+y1;
+                    if(toGrid){var pv=this.particleVel[2*i+comp];if(nr0>=0&&nr0<this.fNumCells){fv[nr0]+=pv*s0;dw[nr0]+=s0;}if(nr1>=0&&nr1<this.fNumCells){fv[nr1]+=pv*s1;dw[nr1]+=s1;}if(nr2>=0&&nr2<this.fNumCells){fv[nr2]+=pv*s2;dw[nr2]+=s2;}if(nr3>=0&&nr3<this.fNumCells){fv[nr3]+=pv*s3;dw[nr3]+=s3;}}
                     else{var vld0=(nr0>=0&&nr0<this.fNumCells&&this.isCellFluidForVelocity(nr0,comp))?1.0:0.0;var vld1=(nr1>=0&&nr1<this.fNumCells&&this.isCellFluidForVelocity(nr1,comp))?1.0:0.0;var vld2=(nr2>=0&&nr2<this.fNumCells&&this.isCellFluidForVelocity(nr2,comp))?1.0:0.0;var vld3=(nr3>=0&&nr3<this.fNumCells&&this.isCellFluidForVelocity(nr3,comp))?1.0:0.0;var vp=this.particleVel[2*i+comp],sum_w=vld0*s0+vld1*s1+vld2*s2+vld3*s3;if(sum_w>1e-9){var picV=((nr0>=0&&nr0<this.fNumCells?vld0*s0*fv[nr0]:0)+(nr1>=0&&nr1<this.fNumCells?vld1*s1*fv[nr1]:0)+(nr2>=0&&nr2<this.fNumCells?vld2*s2*fv[nr2]:0)+(nr3>=0&&nr3<this.fNumCells?vld3*s3*fv[nr3]:0))/sum_w;var corr=((nr0>=0&&nr0<this.fNumCells?vld0*s0*(fv[nr0]-pfv[nr0]):0)+(nr1>=0&&nr1<this.fNumCells?vld1*s1*(fv[nr1]-pfv[nr1]):0)+(nr2>=0&&nr2<this.fNumCells?vld2*s2*(fv[nr2]-pfv[nr2]):0)+(nr3>=0&&nr3<this.fNumCells?vld3*s3*(fv[nr3]-pfv[nr3]):0))/sum_w;this.particleVel[2*i+comp]=(1.0-flipRatio)*picV+flipRatio*(vp+corr);}}
-                } 
-                if(toGrid){ 
-                    for(var ii=0;ii<fv.length;ii++){if(dw[ii]>1e-9)fv[ii]/=dw[ii];} 
-                    for(let gx=0; gx<this.fNumX; gx++) { 
-                        for(let gy=0; gy<this.fNumY; gy++) { 
-                            let cellIdx = gx*nY + gy; 
-                            if (gx < this.fNumX) {  
-                                let cellRightIdx = (gx+1)*nY + gy; 
-                                if (this.s[cellIdx] === 0.0 || (gx+1 < this.fNumX && cellRightIdx < this.fNumCells && this.s[cellRightIdx] === 0.0)) { 
-                                    this.u[cellIdx] = 0.0;  
-                                } 
-                            } 
-                             if (gy < this.fNumY) {  
-                                let cellAboveIdx = gx*nY + (gy+1); 
-                                if (this.s[cellIdx] === 0.0 || (gy+1 < this.fNumY && cellAboveIdx < this.fNumCells && this.s[cellAboveIdx] === 0.0)) { 
-                                    this.v[cellIdx] = 0.0;  
-                                } 
-                            } 
-                        } 
-                    } 
-                } 
-            } 
+                }
+                if(toGrid){
+                    for(var ii=0;ii<fv.length;ii++){if(dw[ii]>1e-9)fv[ii]/=dw[ii];}
+                    for(let gx=0; gx<this.fNumX; gx++) {
+                        for(let gy=0; gy<this.fNumY; gy++) {
+                            let cellIdx = gx*nY + gy;
+                            if (gx < this.fNumX) { // Check u-velocity owner (left of cell face)
+                                let cellRightIdx = (gx+1)*nY + gy;
+                                if (this.s[cellIdx] === 0.0 || (gx+1 < this.fNumX && cellRightIdx < this.fNumCells && this.s[cellRightIdx] === 0.0)) {
+                                    this.u[cellIdx] = 0.0; // Set u-velocity at solid boundary face to 0
+                                }
+                            }
+                             if (gy < this.fNumY) { // Check v-velocity owner (below cell face)
+                                let cellAboveIdx = gx*nY + (gy+1);
+                                if (this.s[cellIdx] === 0.0 || (gy+1 < this.fNumY && cellAboveIdx < this.fNumCells && this.s[cellAboveIdx] === 0.0)) {
+                                    this.v[cellIdx] = 0.0; // Set v-velocity at solid boundary face to 0
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        solveIncompressibility(numIters, sdt, overRelaxation, compensateDriftVal = true) { 
-            this.p.fill(0.0); 
-            var nY = this.fNumY; 
-            var cp = this.density * this.h / sdt; 
-            for (var iter = 0; iter < numIters; iter++) { 
-                for (var gx = 1; gx < this.fNumX - 1; gx++) { 
-                    for (var gy = 1; gy < this.fNumY - 1; gy++) { 
-                        var centerIdx = gx * nY + gy; 
-                        if (this.cellType[centerIdx] != FLUID_CELL) continue; 
-                        var div = this.u[gx * nY + gy] - this.u[(gx - 1) * nY + gy] + 
-                                  this.v[gx * nY + gy] - this.v[gx * nY + (gy - 1)]; 
-                        var s_sum = this.s[(gx - 1) * nY + gy] + this.s[gx * nY + gy] + 
-                                    this.s[gx * nY + (gy - 1)] + this.s[gx * nY + gy]; 
-                        if (s_sum < 1e-9) continue; 
-                        if (this.particleRestDensity > 0.0 && compensateDriftVal) { 
-                            var k_drift = 0.0; 
-                            var compression = this.particleDensity[centerIdx] - this.particleRestDensity; 
-                            if (compression > 0.0) div -= k_drift * compression / sdt; 
-                        } 
-                        var p_change_scaled = -div / s_sum * overRelaxation; 
-                        this.p[centerIdx] += cp * p_change_scaled; 
-                        this.u[(gx - 1) * nY + gy] -= this.s[(gx-1)*nY+gy] * p_change_scaled; 
-                        this.u[gx * nY + gy]       += this.s[gx*nY+gy]       * p_change_scaled; 
-                        this.v[gx * nY + (gy - 1)] -= this.s[gx*nY+(gy-1)] * p_change_scaled; 
-                        this.v[gx * nY + gy]       += this.s[gx*nY+gy]       * p_change_scaled; 
-                    } 
-                } 
-            } 
+        solveIncompressibility(numIters, sdt, overRelaxation, compensateDriftVal = true) {
+            this.p.fill(0.0);
+            var nY = this.fNumY;
+            var cp = this.density * this.h / sdt;
+            for (var iter = 0; iter < numIters; iter++) {
+                for (var gx = 1; gx < this.fNumX - 1; gx++) {
+                    for (var gy = 1; gy < this.fNumY - 1; gy++) {
+                        var centerIdx = gx * nY + gy;
+                        if (this.cellType[centerIdx] != FLUID_CELL) continue;
+                        var div = this.u[gx * nY + gy] - this.u[(gx - 1) * nY + gy] +
+                                  this.v[gx * nY + gy] - this.v[gx * nY + (gy - 1)];
+                        var s_sum = this.s[(gx - 1) * nY + gy] + this.s[gx * nY + gy] +
+                                    this.s[gx * nY + (gy - 1)] + this.s[gx * nY + gy];
+                        if (s_sum < 1e-9) continue;
+                        if (this.particleRestDensity > 0.0 && compensateDriftVal) {
+                            var k_drift = 0.0; // Typically 0.0 for FLIP, or small if used
+                            var compression = this.particleDensity[centerIdx] - this.particleRestDensity;
+                            if (compression > 0.0) div -= k_drift * compression / sdt;
+                        }
+                        var p_change_scaled = -div / s_sum * overRelaxation;
+                        this.p[centerIdx] += cp * p_change_scaled;
+                        this.u[(gx - 1) * nY + gy] -= this.s[(gx-1)*nY+gy] * p_change_scaled;
+                        this.u[gx * nY + gy]       += this.s[gx*nY+gy]       * p_change_scaled;
+                        this.v[gx * nY + (gy - 1)] -= this.s[gx*nY+(gy-1)] * p_change_scaled;
+                        this.v[gx * nY + gy]       += this.s[gx*nY+gy]       * p_change_scaled;
+                    }
+                }
+            }
         }
-        
-        simulate(dt, gravityX_acc, gravityY_acc, flipRatio, numPressureIters, numParticleIters, overRelaxation, compensateDrift, separateParticles) { 
-            var numSubSteps = 1; var sdt = dt / numSubSteps; 
-            for (var step = 0; step < numSubSteps; step++) { 
-                this.integrateParticles(sdt, gravityX_acc, gravityY_acc); 
-                this.capParticleVelocities(sdt); 
-                if (separateParticles) { this.pushParticlesApart(numParticleIters); } 
-                this.handleParticleCollisions(); 
-                enforceParticleOctagonCollisionFF(this, simOctagonVertices, octagonNormals); 
-                this.capParticleVelocities(sdt); 
-                this.transferVelocities(true, flipRatio); 
-                this.updateParticleDensity(); 
-                this.solveIncompressibility(numPressureIters, sdt, overRelaxation, compensateDrift); 
-                this.transferVelocities(false, flipRatio); 
-                this.capParticleVelocities(sdt); 
-            } 
+
+        simulate(dt, gravityX_acc, gravityY_acc, flipRatio, numPressureIters, numParticleIters, overRelaxation, compensateDrift, separateParticles) {
+            var numSubSteps = 1; var sdt = dt / numSubSteps;
+            for (var step = 0; step < numSubSteps; step++) {
+                this.integrateParticles(sdt, gravityX_acc, gravityY_acc);
+                this.capParticleVelocities(sdt);
+                if (separateParticles) { this.pushParticlesApart(numParticleIters); }
+                this.handleParticleCollisions();
+                enforceParticleOctagonCollisionFF(this, simOctagonVertices, octagonNormals);
+                this.capParticleVelocities(sdt);
+                this.transferVelocities(true, flipRatio);
+                this.updateParticleDensity();
+                this.solveIncompressibility(numPressureIters, sdt, overRelaxation, compensateDrift);
+                this.transferVelocities(false, flipRatio);
+                this.capParticleVelocities(sdt);
+            }
         }
     } // End of FlipFluid Class
 
@@ -368,211 +368,219 @@
     function isInsideSimOctagon(sim_px,sim_py){ for(let i=0;i<8;i++){const v1=simOctagonVertices[i],n=octagonNormals[i];if((sim_px-v1.x)*n.x+(sim_py-v1.y)*n.y<-1e-5)return false;}return true;}
     function initializeHexGridCellTypes(){ const s_cut=CORNER_CUT_FOR_LEDS;for(let gx=0;gx<cellCols;gx++){for(let gy=0;gy<cellRows;gy++){const idx=gx*cellRows+gy;let iS=false;if(gx+gy<s_cut)iS=true;if((gridResX-1-gx)+gy<s_cut)iS=true;if(gx+(gridResY-1-gy)<s_cut)iS=true;if((gridResX-1-gx)+(gridResY-1-gy)<s_cut)iS=true;if(iS){hexGridCellType[idx]=HG_CELL_SOLID;}else{hexGridCellType[idx]=HG_CELL_AIR;}}}}
     function enforceParticleOctagonCollisionFF(fl,sOV,oN){ const rst=DAMPING,rTh=fl.particleRadius*0.5;for(let pI=0;pI<fl.numParticles;pI++){let px=fl.particlePos[2*pI],py=fl.particlePos[2*pI+1],pvx=fl.particleVel[2*pI],pvy=fl.particleVel[2*pI+1];for(let i=0;i<8;i++){const v1=sOV[i],n=oN[i],dist=(px-v1.x)*n.x+(py-v1.y)*n.y;if(dist<rTh){const pen=rTh-dist + 1e-5; px+=pen*n.x;py+=pen*n.y;const vn=pvx*n.x+pvy*n.y;if(vn<0){pvx-=(1+rst)*vn*n.x;pvy-=(1+rst)*vn*n.y;}}}fl.particlePos[2*pI]=px;fl.particlePos[2*pI+1]=py;fl.particleVel[2*pI]=pvx;fl.particleVel[2*pI+1]=pvy;}}
-    
-    function init() { 
-        setupOctagonGeometry(); 
-        simOctagonVertices = octagonVertices.map(v => ({ x: v.x - MARGIN, y: v.y - MARGIN })); 
-        initializeHexGridCellTypes(); 
-        ledPositionLUT = []; 
-        gridToLedIndexMap = Array(gridResY).fill(null).map(() => Array(gridResX).fill(-1)); 
-        let currentLedIndex = 0; 
-        for (let gy = 0; gy < gridResY; gy++) { 
-            for (let gx = 0; gx < gridResX; gx++) { 
-                const hexGridCIdx = gx * cellRows + gy; 
-                if (hexGridCellType[hexGridCIdx] !== HG_CELL_SOLID) { 
-                    gridToLedIndexMap[gy][gx] = currentLedIndex; 
-                    const ledTopLeftX = MARGIN + gx * CELL_SIZE_X + LED_PADDING_X; 
-                    const ledTopLeftY = MARGIN + gy * CELL_SIZE_Y + LED_PADDING_Y; 
-                    ledPositionLUT.push({ x: ledTopLeftX, y: ledTopLeftY }); 
-                    currentLedIndex++; 
-                } 
-            } 
-        } 
-        if (currentLedIndex !== EXPECTED_LED_COUNT) { 
-            console.warn(`LED MISMATCH: Expected ${EXPECTED_LED_COUNT} (for LED shape rule ~${CORNER_CUT_FOR_LEDS}), but found ${currentLedIndex}. Geometric CORNER_CUT is ${CORNER_CUT_GEOMETRIC}.`); 
-        } else { 
-            console.log(`Initialized LUT for ${currentLedIndex} LEDs.`); 
-        } 
-        const particleRadiusPx = FLIP_PARTICLE_RADIUS_FACTOR * CELL_SIZE_X; 
-        flipFluid = new FlipFluid( FLIP_FLUID_DENSITY, GRID_AREA_SIZE, GRID_AREA_SIZE, CELL_SIZE_X, particleRadiusPx, NUM_PARTICLES ); 
-        for (let gx = 0; gx < flipFluid.fNumX; gx++) { 
-            for (let gy = 0; gy < flipFluid.fNumY; gy++) { 
-                const hexGridCIdx = gx * cellRows + gy; 
-                const flipFluidCIdx = gx * flipFluid.fNumY + gy; 
-                if (hexGridCellType[hexGridCIdx] === HG_CELL_SOLID) { 
-                    flipFluid.s[flipFluidCIdx] = 0.0; 
-                    flipFluid.cellType[flipFluidCIdx] = SOLID_CELL; 
-                } else { 
-                    flipFluid.s[flipFluidCIdx] = 1.0; 
-                    flipFluid.cellType[flipFluidCIdx] = AIR_CELL; 
-                } 
-            } 
-        } 
-        let placedParticles = 0; let attempts = 0; 
-        const initialParticleVelScale = CELL_SIZE_X * 0.0005; 
-        const placeMargin = particleRadiusPx * 3; 
-        while (placedParticles < NUM_PARTICLES && attempts < NUM_PARTICLES * 8000) { 
-            const px_sim = placeMargin + Math.random() * (GRID_AREA_SIZE - 2 * placeMargin); 
-            const py_sim = placeMargin + Math.random() * (GRID_AREA_SIZE * 0.2 - 2 * placeMargin) + GRID_AREA_SIZE * 0.1; 
-            if (isInsideSimOctagon(px_sim, py_sim)) { 
-                flipFluid.particlePos[2 * placedParticles] = px_sim; 
-                flipFluid.particlePos[2 * placedParticles + 1] = py_sim; 
-                flipFluid.particleVel[2 * placedParticles] = (Math.random() - 0.5) * initialParticleVelScale; 
-                flipFluid.particleVel[2 * placedParticles + 1] = (Math.random() * 0.1 + 0.05) * currentSimGravityY * FIXED_TIME_STEP; 
-                placedParticles++; 
-            } attempts++; 
-        } 
-        flipFluid.numParticles = placedParticles; 
-        if (placedParticles < NUM_PARTICLES) { console.warn(`Could only place ${placedParticles}/${NUM_PARTICLES} particles initially.`); 
-        } else { console.log(`Initialized ${flipFluid.numParticles} particles.`); } 
-        gridState = Array(gridResY).fill(null).map(() => Array(gridResX).fill(false)); 
+
+    function init() {
+        setupOctagonGeometry();
+        simOctagonVertices = octagonVertices.map(v => ({ x: v.x - MARGIN, y: v.y - MARGIN }));
+        initializeHexGridCellTypes();
+        ledPositionLUT = [];
+        gridToLedIndexMap = Array(gridResY).fill(null).map(() => Array(gridResX).fill(-1));
+        let currentLedIndex = 0;
+        for (let gy = 0; gy < gridResY; gy++) {
+            for (let gx = 0; gx < gridResX; gx++) {
+                const hexGridCIdx = gx * cellRows + gy;
+                if (hexGridCellType[hexGridCIdx] !== HG_CELL_SOLID) {
+                    gridToLedIndexMap[gy][gx] = currentLedIndex;
+                    const ledTopLeftX = MARGIN + gx * CELL_SIZE_X + LED_PADDING_X;
+                    const ledTopLeftY = MARGIN + gy * CELL_SIZE_Y + LED_PADDING_Y;
+                    ledPositionLUT.push({ x: ledTopLeftX, y: ledTopLeftY });
+                    currentLedIndex++;
+                }
+            }
+        }
+        if (currentLedIndex !== EXPECTED_LED_COUNT) {
+            console.warn(`LED MISMATCH: Expected ${EXPECTED_LED_COUNT} (for LED shape rule ~${CORNER_CUT_FOR_LEDS}), but found ${currentLedIndex}. Geometric CORNER_CUT is ${CORNER_CUT_GEOMETRIC}.`);
+        } else {
+            console.log(`Initialized LUT for ${currentLedIndex} LEDs.`);
+        }
+        const particleRadiusPx = FLIP_PARTICLE_RADIUS_FACTOR * CELL_SIZE_X;
+        flipFluid = new FlipFluid( FLIP_FLUID_DENSITY, GRID_AREA_SIZE, GRID_AREA_SIZE, CELL_SIZE_X, particleRadiusPx, NUM_PARTICLES );
+        for (let gx = 0; gx < flipFluid.fNumX; gx++) {
+            for (let gy = 0; gy < flipFluid.fNumY; gy++) {
+                const hexGridCIdx = gx * cellRows + gy;
+                const flipFluidCIdx = gx * flipFluid.fNumY + gy;
+                if (hexGridCellType[hexGridCIdx] === HG_CELL_SOLID) {
+                    flipFluid.s[flipFluidCIdx] = 0.0;
+                    flipFluid.cellType[flipFluidCIdx] = SOLID_CELL;
+                } else {
+                    flipFluid.s[flipFluidCIdx] = 1.0;
+                    flipFluid.cellType[flipFluidCIdx] = AIR_CELL;
+                }
+            }
+        }
+        let placedParticles = 0; let attempts = 0;
+        const initialParticleVelScale = CELL_SIZE_X * 0.0005;
+        const placeMargin = particleRadiusPx * 3;
+        while (placedParticles < NUM_PARTICLES && attempts < NUM_PARTICLES * 8000) {
+            const px_sim = placeMargin + Math.random() * (GRID_AREA_SIZE - 2 * placeMargin);
+            const py_sim = placeMargin + Math.random() * (GRID_AREA_SIZE * 0.2 - 2 * placeMargin) + GRID_AREA_SIZE * 0.1;
+            if (isInsideSimOctagon(px_sim, py_sim)) {
+                flipFluid.particlePos[2 * placedParticles] = px_sim;
+                flipFluid.particlePos[2 * placedParticles + 1] = py_sim;
+                flipFluid.particleVel[2 * placedParticles] = (Math.random() - 0.5) * initialParticleVelScale;
+                flipFluid.particleVel[2 * placedParticles + 1] = (Math.random() * 0.1 + 0.05) * currentSimGravityY * FIXED_TIME_STEP; // currentSimGravityY is 0 initially
+                placedParticles++;
+            } attempts++;
+        }
+        flipFluid.numParticles = placedParticles;
+        if (placedParticles < NUM_PARTICLES) { console.warn(`Could only place ${placedParticles}/${NUM_PARTICLES} particles initially.`);
+        } else { console.log(`Initialized ${flipFluid.numParticles} particles.`); }
+        gridState = Array(gridResY).fill(null).map(() => Array(gridResX).fill(false));
         setupAccelerometer();
     }
-    
+
     function handleDeviceMotion(event) {
         let debugString = "";
+        let finalTargetSimGx = 0; // Initialize targets for the frame
+        let finalTargetSimGy = 0;
+        let accelSimGx_val = 0; // For debug output
+        let accelSimGy_val = 0; // For debug output
+
         if (event.accelerationIncludingGravity) {
             let acc = event.accelerationIncludingGravity;
-            let rawX = (typeof acc.x === 'number' && isFinite(acc.x)) ? acc.x : 0; 
+            let rawX = (typeof acc.x === 'number' && isFinite(acc.x)) ? acc.x : 0;
             let rawY = (typeof acc.y === 'number' && isFinite(acc.y)) ? acc.y : 0;
-            let rawZ = (typeof acc.z === 'number' && isFinite(acc.z)) ? acc.z : 0; 
+            // let rawZ = (typeof acc.z === 'number' && isFinite(acc.z)) ? acc.z : 0; // Not directly used
 
-            debugString += `AIG Raw: x=${rawX.toFixed(1)}, y=${rawY.toFixed(1)}, z=${rawZ.toFixed(1)}<br>`;
+            debugString += `AIG Raw: x=${rawX.toFixed(1)}, y=${rawY.toFixed(1)}<br>`;
 
             let screenOrientation = (window.innerHeight > window.innerWidth) ? "portrait" : "landscape";
-            let targetSimGx, targetSimGy;
-            
+
+            let accelSimGx, accelSimGy;
             if (screenOrientation === "portrait") {
-                // If tilting Right makes rawX Negative, and we want fluid Right (+simGx):
-                targetSimGx = -rawX * ACCEL_SCALING_FACTOR; 
-                
-                // If tilting Top Towards User makes rawY Negative, and we want fluid Up (-simGy):
-                targetSimGy = rawY * ACCEL_SCALING_FACTOR;  
-            } else { 
-                // Landscape (home button to the right, 90deg CCW from portrait)
-                // Device Y (was top edge) is now along screen's X-axis (pointing right).
-                // If rawY negative for "top towards user" (portrait), then rawY negative for "left side towards user" (landscape)
-                // To make fluid go right (positive simGx) when device's "new top" (original right side) is tilted down (original rawY positive),
-                // this means targetSimGx = rawY * ACCEL_SCALING_FACTOR should be correct if rawY behaves consistently for that physical tilt.
-                targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
-                
-                // Device X (was right edge) is now along screen's Y-axis (pointing up).
-                // If rawX negative for "right tilt" (portrait), it's now "top of screen tilted towards user".
-                // We want fluid UP (-simGy). So, if rawX is negative, this should be -(-rawX) * scale = rawX * scale
-                // OR, more simply: device X now points UP screen. If tilting this "up" towards user makes rawX negative,
-                // then to make fluid go UP (-simGy), targetSimGy = rawX * scale.
-                targetSimGy = rawX * ACCEL_SCALING_FACTOR; 
+                accelSimGx = -rawX;
+                accelSimGy = rawY;
+            } else { // Landscape
+                accelSimGx = rawY;
+                accelSimGy = rawX;
             }
-            
-            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; // Add base gravity (currently small: 0.8)
+            accelSimGx_val = accelSimGx; // Store for debugging
+            accelSimGy_val = accelSimGy;
 
-            currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
-            currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
-            
-            if (infoDiv) { 
-                 infoDiv.textContent = `SimG: X=${currentSimGravityX.toFixed(1)}, Y=${currentSimGravityY.toFixed(1)} Orient: ${screenOrientation}`;
+            let desiredSimGx = accelSimGx * ACCEL_SCALING_FACTOR;
+            let desiredSimGy = accelSimGy * ACCEL_SCALING_FACTOR;
+            const desiredMagnitude = Math.sqrt(desiredSimGx * desiredSimGx + desiredSimGy * desiredSimGy);
+
+            if (desiredMagnitude > 1e-5) { // If there's some discernible tilt
+                if (desiredMagnitude < DYNAMIC_BASE_PULL_MAGNITUDE) {
+                    const scaleUp = DYNAMIC_BASE_PULL_MAGNITUDE / desiredMagnitude;
+                    finalTargetSimGx = desiredSimGx * scaleUp;
+                    finalTargetSimGy = desiredSimGy * scaleUp;
+                } else {
+                    finalTargetSimGx = desiredSimGx;
+                    finalTargetSimGy = desiredSimGy;
+                }
+            } else {
+                // finalTargetSimGx and finalTargetSimGy remain 0 (no significant tilt)
             }
-            debugString += `TargetSimG: x=${targetSimGx.toFixed(1)}, y=${targetSimGy.toFixed(1)}<br>`;
-
-        } else {
-            debugString += "event.accelerationIncludingGravity is null or undefined.<br>";
-            currentSimGravityX = 0; 
-            currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-            if (infoDiv) infoDiv.textContent = "Accel: No AIG data. Using default G.";
+        } else { // event.accelerationIncludingGravity is null
+            debugString += "AIG is null.<br>";
+            // finalTargetSimGx and finalTargetSimGy remain 0
         }
-         if (event.acceleration) {
+
+        currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * finalTargetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
+        currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * finalTargetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
+
+        if (infoDiv) {
+             infoDiv.textContent = `SimG: X=${currentSimGravityX.toFixed(1)}, Y=${currentSimGravityY.toFixed(1)} Orient: ${((window.innerHeight > window.innerWidth) ? "P" : "L")}`;
+        }
+        debugString += `TargetSimG: x=${finalTargetSimGx.toFixed(1)}, y=${finalTargetSimGy.toFixed(1)}<br>`;
+        debugString += `AccelSim(map): x=${accelSimGx_val.toFixed(1)}, y=${accelSimGy_val.toFixed(1)}<br>`;
+
+
+        if (event.acceleration) {
             let accOnly = event.acceleration;
             let ax = (typeof accOnly.x === 'number' && isFinite(accOnly.x)) ? accOnly.x : 0;
             let ay = (typeof accOnly.y === 'number' && isFinite(accOnly.y)) ? accOnly.y : 0;
-            let az = (typeof accOnly.z === 'number' && isFinite(accOnly.z)) ? accOnly.z : 0;
-            debugString += `RawA (no grav): x=${ax.toFixed(1)}, y=${ay.toFixed(1)}, z=${az.toFixed(1)}<br>`;
+            debugString += `RawA (no grav): x=${ax.toFixed(1)}, y=${ay.toFixed(1)}<br>`;
         } else {
             debugString += "No event.acceleration data.<br>";
         }
-        logDebug(debugString); 
+        logDebug(debugString);
     }
 
-    function requestMotionPermission() { 
+
+    function requestMotionPermission() {
         logDebug("Attempting to request motion permission...");
-        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') { 
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
             DeviceMotionEvent.requestPermission()
-                .then(permissionState => { 
+                .then(permissionState => {
                     logDebug("Permission request result: " + permissionState);
-                    if (permissionState === 'granted') { 
-                        window.addEventListener('devicemotion', handleDeviceMotion, true); 
-                        if (infoDiv) infoDiv.textContent = "Accelerometer active & permission granted!"; 
-                        const button = document.getElementById('permissionButton'); 
-                        if (button) button.remove(); 
-                    } else { 
-                        if (infoDiv) infoDiv.textContent = "Permission not granted by user."; 
-                        alert("Motion permission was not granted. Please check browser settings or reload to try again."); 
-                    } 
+                    if (permissionState === 'granted') {
+                        window.addEventListener('devicemotion', handleDeviceMotion, true);
+                        if (infoDiv) infoDiv.textContent = "Accelerometer active & permission granted!";
+                        const button = document.getElementById('permissionButton');
+                        if (button) button.remove();
+                    } else {
+                        if (infoDiv) infoDiv.textContent = "Permission not granted by user.";
+                        alert("Motion permission was not granted. Please check browser settings or reload to try again.");
+                    }
                 })
-                .catch(error => { 
-                    console.error("Error during DeviceMotionEvent.requestPermission():", error); 
+                .catch(error => {
+                    console.error("Error during DeviceMotionEvent.requestPermission():", error);
                     logDebug("Error requesting permission: " + error.message);
-                    if (infoDiv) infoDiv.textContent = "Error requesting motion permission."; 
-                }); 
-        } else { 
+                    if (infoDiv) infoDiv.textContent = "Error requesting motion permission.";
+                });
+        } else {
             logDebug("DeviceMotionEvent.requestPermission API not found. Trying direct listener.");
             if (window.DeviceMotionEvent) {
-                window.addEventListener('devicemotion', handleDeviceMotion, true); 
+                window.addEventListener('devicemotion', handleDeviceMotion, true);
                 if (infoDiv) infoDiv.textContent = "Accelerometer listening (auto).";
                  logDebug("devicemotion listener added (auto).");
             } else {
                  if (infoDiv) infoDiv.textContent = "DeviceMotionEvent not supported by browser.";
                  logDebug("DeviceMotionEvent not supported by browser.");
             }
-            const button = document.getElementById('permissionButton'); 
-            if (button) button.remove(); 
-        } 
+            const button = document.getElementById('permissionButton');
+            if (button) button.remove();
+        }
     }
-    function setupAccelerometer() { 
+    function setupAccelerometer() {
         logDebug("setupAccelerometer called.");
-        if (!window.isSecureContext && window.location.protocol !== "file:") { 
+        if (!window.isSecureContext && window.location.protocol !== "file:") {
             logDebug("WARNING: Page is not in a secure context (HTTPS). Accelerometer may not work reliably.");
             if (infoDiv) infoDiv.textContent = "Accelerometer: Needs HTTPS for reliability!";
         }
 
-        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') { 
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
             let button = document.getElementById('permissionButton');
             if (!button) {
-                button = document.createElement('button'); 
-                button.id = 'permissionButton'; 
+                button = document.createElement('button');
+                button.id = 'permissionButton';
                 document.body.appendChild(button);
             }
-            button.innerText = "Enable Motion Control"; 
-            button.onclick = requestMotionPermission; 
-            if (infoDiv) infoDiv.textContent = "Click 'Enable Motion Control'"; 
+            button.innerText = "Enable Motion Control";
+            button.onclick = requestMotionPermission;
+            if (infoDiv) infoDiv.textContent = "Click 'Enable Motion Control'";
             logDebug("Permission button is set up for iOS 13+ style.");
-        } else if (window.DeviceMotionEvent) { 
+        } else if (window.DeviceMotionEvent) {
              logDebug("Attempting to add devicemotion listener directly (non-iOS13+ or Android).");
-            window.addEventListener('devicemotion', handleDeviceMotion, true); 
+            window.addEventListener('devicemotion', handleDeviceMotion, true);
             if (infoDiv) infoDiv.textContent = "Accelerometer active (attempted auto-listen).";
-        } else { 
-            if (infoDiv) infoDiv.textContent = "DeviceMotionEvent not supported."; 
+        } else {
+            if (infoDiv) infoDiv.textContent = "DeviceMotionEvent not supported.";
             logDebug("DeviceMotionEvent is not supported on this browser.");
-        } 
+        }
     }
 
     function updateSimulationStep(dt) {
         if (!flipFluid || flipFluid.numParticles === 0) { return; }
-        flipFluid.simulate( 
-            dt, 
-            currentSimGravityX, 
-            currentSimGravityY, 
-            simParams.flipRatio, 
-            simParams.numPressureIters, 
-            simParams.numParticleIters, 
-            simParams.overRelaxation, 
-            simParams.compensateDrift, 
-            simParams.separateParticles 
-        ); 
+        flipFluid.simulate(
+            dt,
+            currentSimGravityX,
+            currentSimGravityY,
+            simParams.flipRatio,
+            simParams.numPressureIters,
+            simParams.numParticleIters,
+            simParams.overRelaxation,
+            simParams.compensateDrift,
+            simParams.separateParticles
+        );
         for(let r=0; r<gridResY; ++r) { if (gridState[r]) gridState[r].fill(false); }
         for (let i = 0; i < flipFluid.numParticles; i++) { const pxSim = flipFluid.particlePos[2 * i]; const pySim = flipFluid.particlePos[2 * i + 1]; const gx = clamp(Math.floor(pxSim * INV_CELL_SIZE_X), 0, gridResX - 1); const gy = clamp(Math.floor(pySim * INV_CELL_SIZE_Y), 0, gridResY - 1); if (gridToLedIndexMap[gy] && gridToLedIndexMap[gy][gx] !== -1) { const ffCellIdx = gx * flipFluid.fNumY + gy; if ( ffCellIdx >=0 && ffCellIdx < flipFluid.fNumCells && (flipFluid.cellType[ffCellIdx] === FLUID_CELL || (flipFluid.s[ffCellIdx] !== 0.0 && flipFluid.particleDensity[ffCellIdx] > 0.05)) ) { if (gridState[gy]) { gridState[gy][gx] = true; } } } }
     }
     function render() { ctx.fillStyle=COLOR_BACKGROUND;ctx.fillRect(0,0,CANVAS_SIZE,CANVAS_SIZE);ctx.shadowColor=COLOR_LED_GLOW;for(let y=0;y<gridResY;y++){for(let x=0;x<gridResX;x++){if(!gridToLedIndexMap||!gridToLedIndexMap[y]){continue;}const lI=gridToLedIndexMap[y][x];if(lI!==-1){const p=ledPositionLUT[lI];if(!p){continue;}const lX=p.x,lY=p.y;if(!gridState||!gridState[y]){ctx.fillStyle=COLOR_LED_OFF;ctx.fillRect(lX,lY,LED_SIZE_X,LED_SIZE_Y);continue;}if(gridState[y][x]){ctx.fillStyle=COLOR_LED_ON;ctx.shadowBlur=Math.min(LED_SIZE_X,LED_SIZE_Y)*0.8;ctx.fillRect(lX,lY,LED_SIZE_X,LED_SIZE_Y);ctx.shadowBlur=0;}else{ctx.fillStyle=COLOR_LED_OFF;ctx.fillRect(lX,lY,LED_SIZE_X,LED_SIZE_Y);}}}}ctx.shadowBlur=0;ctx.strokeStyle=COLOR_BORDER;const bLW=MARGIN*0.2;ctx.lineWidth=bLW;ctx.beginPath();const cX=CANVAS_SIZE/2,cY=CANVAS_SIZE/2,bP=25,rad=(CANVAS_SIZE/2)-bP-(bLW/2);ctx.arc(cX,cY,rad,0,Math.PI*2);ctx.stroke();const rR=CELL_SIZE_X*1.1,rT=MARGIN*0.15,rCX=CANVAS_SIZE-MARGIN,rCY=CANVAS_SIZE-MARGIN;ctx.strokeStyle=COLOR_RING;ctx.lineWidth=rT;ctx.beginPath();ctx.arc(rCX,rCY,rR,0,Math.PI*2);ctx.stroke();ctx.strokeStyle=COLOR_BORDER;ctx.lineWidth=rT*0.5;ctx.beginPath();ctx.arc(rCX,rCY,rR-rT*0.3,0,Math.PI*2);ctx.stroke();}
-        
+
     let lastTime = 0; function gameLoop(timestamp) { if(!flipFluid && !document.getElementById('ledDisplayCanvas')) { requestAnimationFrame(gameLoop); return; } if (lastTime === 0) lastTime = timestamp; const frameTime = Math.min(0.1, (timestamp - lastTime) / 1000); lastTime = timestamp; timeAccumulator += frameTime; while (timeAccumulator >= FIXED_TIME_STEP) { updateSimulationStep(FIXED_TIME_STEP); timeAccumulator -= FIXED_TIME_STEP; } render(); requestAnimationFrame(gameLoop); }
 
     init();
