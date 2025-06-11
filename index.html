@@ -51,10 +51,10 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 300; 
-    const BASE_GRAVITY_Y_ACCELERATION = 1.1; 
+    const BASE_GRAVITY_Y_ACCELERATION = 1.8; 
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/40;                 
-    const MAX_VEL_CELLS_PER_STEP = 0.5;            
+    const MAX_VEL_CELLS_PER_STEP = 0.8;            
 
     const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
     const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
