@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Stability & Remap</title>
+<title>Octagonal LED FLIP Fluid - Leak Fix Attempt 2</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -17,6 +17,7 @@
 <div id="info">Accelerometer: Initializing...</div>
 <div id="debugInfo">Debug Log:<br></div>
 <canvas id="ledDisplayCanvas"></canvas>
+
 <script>
     const canvas = document.getElementById('ledDisplayCanvas');
     const ctx = canvas.getContext('2d');
@@ -49,11 +50,11 @@
     let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
-    const NUM_PARTICLES = 300; 
-    const BASE_GRAVITY_Y_ACCELERATION = 0.7; // <<< NO BASE Y-GRAVITY FOR THIS TEST (purely accelerometer driven)
-    const DAMPING = 0.4;                           
-    const FIXED_TIME_STEP = 1/10;                 // SLOWER TIMESTEP
-    const MAX_VEL_CELLS_PER_STEP = 0.7;            // STRICTER VELOCITY CAP
+    const NUM_PARTICLES = 300; // Kept your increased particle count
+    const BASE_GRAVITY_Y_ACCELERATION = 150; 
+    const DAMPING = 0.2;                           
+    const FIXED_TIME_STEP = 1/120;                 
+    const MAX_VEL_CELLS_PER_STEP = 0.5;            
 
     const HG_CELL_AIR = 1; const HG_CELL_SOLID = 2;
     const FLUID_CELL = 0; const AIR_CELL = 1; const SOLID_CELL = 2;
@@ -75,7 +76,7 @@
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
     const simParams = {
-        flipRatio: 0.2,          
+        flipRatio: 0.8,          
         numPressureIters: 150,    
         numParticleIters: 4,      
         overRelaxation: 1.0,      
@@ -85,8 +86,8 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 20; // Moderate scaling
-    const GRAVITY_SMOOTHING_FACTOR = 0.2; // Start with more smoothing, less responsive
+    const ACCEL_SCALING_FACTOR = 15; 
+    const GRAVITY_SMOOTHING_FACTOR = 0.4; 
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -215,8 +216,10 @@
         
         handleParticleCollisions() { 
             var r = this.particleRadius; 
-            var minX = r; var maxX = this.fNumX * this.h - r; 
-            var minY = r; var maxY = this.fNumY * this.h - r; 
+            var minX = r + 1e-6; // Nudge slightly inward
+            var maxX = this.fNumX * this.h - r - 1e-6; 
+            var minY = r + 1e-6; 
+            var maxY = this.fNumY * this.h - r - 1e-6; 
             for (var i = 0; i < this.numParticles; i++) { 
                 var x = this.particlePos[2 * i]; var y = this.particlePos[2 * i + 1]; 
                 var vx = this.particleVel[2 * i]; var vy = this.particleVel[2 * i + 1]; 
@@ -411,7 +414,7 @@
                 flipFluid.particlePos[2 * placedParticles] = px_sim; 
                 flipFluid.particlePos[2 * placedParticles + 1] = py_sim; 
                 flipFluid.particleVel[2 * placedParticles] = (Math.random() - 0.5) * 0.5 * initialParticleVelScale; 
-                flipFluid.particleVel[2 * placedParticles + 1] = (Math.random() * 0.2 + 0.3) * BASE_GRAVITY_Y_ACCELERATION * FIXED_TIME_STEP; 
+                flipFluid.particleVel[2 * placedParticles + 1] = (Math.random() * 0.2 + 0.1) * currentSimGravityY * FIXED_TIME_STEP; 
                 placedParticles++; 
             } attempts++; 
         } 
@@ -435,28 +438,15 @@
             let screenOrientation = (window.innerHeight > window.innerWidth) ? "portrait" : "landscape";
             let targetSimGx, targetSimGy;
             
-            // DESIRED MAPPING:
-            // Tilt Right (rawX becomes positive) -> Fluid Right (+targetSimGx)
-            // Tilt Left (rawX becomes negative) -> Fluid Left (-targetSimGx)
-            // Tilt Top Edge Towards User (rawY becomes negative) -> Fluid UP screen (-targetSimGy)
-            // Tilt Top Edge Away From User (rawY becomes positive) -> Fluid DOWN screen (+targetSimGy)
-            
             if (screenOrientation === "portrait") {
                 targetSimGx = rawX * ACCEL_SCALING_FACTOR;
                 targetSimGy = rawY * ACCEL_SCALING_FACTOR; 
-            } else { // Landscape (assuming primary: home button right, phone rotated 90 deg CCW from portrait)
-                     // Device Y-axis (was top edge) is now along screen's X-axis (pointing right)
-                     // Device X-axis (was right edge) is now along screen's Y-axis (pointing up)
+            } else { 
                 targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
-                targetSimGy = -rawX * ACCEL_SCALING_FACTOR; // -rawX because positive rawX (device right edge down) means screen top edge down.
+                targetSimGy = -rawX * ACCEL_SCALING_FACTOR; 
             }
             
-            // Add base gravity if you want it independent of tilt.
-            // If BASE_GRAVITY_Y_ACCELERATION is > 0, it will always add a downward pull *on top of* tilt.
-            // For pure tilt control, BASE_GRAVITY_Y_ACCELERATION should be 0.
-            // The current value is 0, so this line won't change targetSimGy unless BASE_GRAVITY_Y_ACCELERATION is non-zero.
-            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
-
+            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; // Add base gravity after tilt calculation if BASE_GRAVITY_Y_ACCELERATION is non-zero
 
             currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
             currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
@@ -468,9 +458,8 @@
 
         } else {
             debugString += "event.accelerationIncludingGravity is null or undefined.<br>";
-            // Fallback to default gravity if no accel data
             currentSimGravityX = 0; 
-            currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; // Will be 0 if BASE_GRAVITY_Y_ACCELERATION is 0
+            currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
             if (infoDiv) infoDiv.textContent = "Accel: No AIG data. Using default G.";
         }
          if (event.acceleration) {
