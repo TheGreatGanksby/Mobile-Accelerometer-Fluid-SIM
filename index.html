@@ -84,7 +84,7 @@
         separateParticles: true,
     };
 
-    let currentSimGravityX = 0;
+    let currentSimGravityX = DYNAMIC_BASE_PULL_MAGNITUDE;
     let currentSimGravityY = DYNAMIC_BASE_PULL_MAGNITUDE; // Initialized to 0 as BASE_GRAVITY_Y_ACCELERATION is removed
     const ACCEL_SCALING_FACTOR = 20; // Tuned: This scales the direct accelerometer input strength
     const GRAVITY_SMOOTHING_FACTOR = 0.7; // Tuned: For a more responsive feel
