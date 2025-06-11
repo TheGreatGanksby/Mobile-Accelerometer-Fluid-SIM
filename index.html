@@ -51,8 +51,8 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 269; 
-    const BASE_GRAVITY_Y_ACCELERATION = 2.0; 
-    const DAMPING = 0.2;                           
+    const BASE_GRAVITY_Y_ACCELERATION = 3.0; 
+    const DAMPING = 0.3;                           
     const FIXED_TIME_STEP = 1/240;                 
     const MAX_VEL_CELLS_PER_STEP = 0.9;            
 
@@ -87,7 +87,7 @@
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
     const ACCEL_SCALING_FACTOR = 15; 
-    const GRAVITY_SMOOTHING_FACTOR = 0.4; 
+    const GRAVITY_SMOOTHING_FACTOR = 0.9; 
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
