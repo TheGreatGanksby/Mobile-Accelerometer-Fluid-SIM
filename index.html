@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer Remap v3</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer Remap v4 (X-Invert)</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -32,12 +32,12 @@
         }
     }
 
-    // --- Configuration from your "BEST VERSION" file ---
+    // --- Configuration ---
     const GRID_DIM_X = 16; const GRID_DIM_Y = 16;
     const CORNER_CUT_GEOMETRIC = 5; 
     const CORNER_CUT_FOR_LEDS = 4;  
 
-    const CANVAS_SIZE = Math.min(window.innerWidth - 20, window.innerHeight - 60, 600); // Keep responsive
+    const CANVAS_SIZE = Math.min(window.innerWidth - 20, window.innerHeight - 60, 600); 
     const MARGIN = CANVAS_SIZE * 0.116; 
     const GRID_AREA_SIZE = CANVAS_SIZE - 2 * MARGIN; 
     const CELL_SIZE_X = GRID_AREA_SIZE / GRID_DIM_X; 
@@ -50,8 +50,8 @@
     let LED_SIZE_Y = LED_SIZE_X / ASPECT_RATIO_W_H; let LED_PADDING_Y = (CELL_SIZE_Y - LED_SIZE_Y) / 2;
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
-    const NUM_PARTICLES = 300; // Your increased particle count
-    const BASE_GRAVITY_Y_ACCELERATION = 0.8; // From your "BEST VERSION" file - this is very low!
+    const NUM_PARTICLES = 150; 
+    const BASE_GRAVITY_Y_ACCELERATION = 0; 
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/120;                 
     const MAX_VEL_CELLS_PER_STEP = 0.5;            
@@ -75,8 +75,8 @@
     let flipFluid = null;
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
-    const simParams = { // From your "BEST VERSION" file
-        flipRatio: 0.2,          
+    const simParams = {
+        flipRatio: 0.8,          
         numPressureIters: 150,    
         numParticleIters: 4,      
         overRelaxation: 1.0,      
@@ -86,8 +86,8 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 20; // Moderate scaling factor to start with
-    const GRAVITY_SMOOTHING_FACTOR = 0.3; // More responsive smoothing
+    const ACCEL_SCALING_FACTOR = 20; 
+    const GRAVITY_SMOOTHING_FACTOR = 0.4; 
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -363,7 +363,7 @@
     function setupOctagonGeometry(){ octagonVertices=[];octagonNormals=[];const C=CORNER_CUT_GEOMETRIC*CELL_SIZE_X,GA=GRID_AREA_SIZE;octagonVertices.push({x:MARGIN+C,y:MARGIN});octagonVertices.push({x:MARGIN+GA-C,y:MARGIN});octagonVertices.push({x:MARGIN+GA,y:MARGIN+C});octagonVertices.push({x:MARGIN+GA,y:MARGIN+GA-C});octagonVertices.push({x:MARGIN+GA-C,y:MARGIN+GA});octagonVertices.push({x:MARGIN+C,y:MARGIN+GA});octagonVertices.push({x:MARGIN,y:MARGIN+GA-C});octagonVertices.push({x:MARGIN,y:MARGIN+C});for(let i=0;i<8;i++){const p1=octagonVertices[i],p2=octagonVertices[(i+1)%8];const dx=p2.x-p1.x,dy=p2.y-p1.y;let nx=-dy,ny=dx;const l=Math.sqrt(nx*nx+ny*ny);if(l>1e-9){nx/=l;ny/=l;}const cX=MARGIN+GA/2,cY=MARGIN+GA/2;const mX=(p1.x+p2.x)/2,mY=(p1.y+p2.y)/2;const vX=cX-mX,vY=cY-mY;if(nx*vX+ny*vY<0){nx*=-1;ny*=-1;}octagonNormals.push({x:nx,y:ny});}}
     function isInsideSimOctagon(sim_px,sim_py){ for(let i=0;i<8;i++){const v1=simOctagonVertices[i],n=octagonNormals[i];if((sim_px-v1.x)*n.x+(sim_py-v1.y)*n.y<-1e-5)return false;}return true;}
     function initializeHexGridCellTypes(){ const s_cut=CORNER_CUT_FOR_LEDS;for(let gx=0;gx<cellCols;gx++){for(let gy=0;gy<cellRows;gy++){const idx=gx*cellRows+gy;let iS=false;if(gx+gy<s_cut)iS=true;if((gridResX-1-gx)+gy<s_cut)iS=true;if(gx+(gridResY-1-gy)<s_cut)iS=true;if((gridResX-1-gx)+(gridResY-1-gy)<s_cut)iS=true;if(iS){hexGridCellType[idx]=HG_CELL_SOLID;}else{hexGridCellType[idx]=HG_CELL_AIR;}}}}
-    function enforceParticleOctagonCollisionFF(fl,sOV,oN){ const rst=DAMPING,rTh=fl.particleRadius*0.5; /* Using 0.5 as you tested */ for(let pI=0;pI<fl.numParticles;pI++){let px=fl.particlePos[2*pI],py=fl.particlePos[2*pI+1],pvx=fl.particleVel[2*pI],pvy=fl.particleVel[2*pI+1];for(let i=0;i<8;i++){const v1=sOV[i],n=oN[i],dist=(px-v1.x)*n.x+(py-v1.y)*n.y;if(dist<rTh){const pen=rTh-dist + 1e-5; /* Push slightly past surface */ px+=pen*n.x;py+=pen*n.y;const vn=pvx*n.x+pvy*n.y;if(vn<0){pvx-=(1+rst)*vn*n.x;pvy-=(1+rst)*vn*n.y;}}}fl.particlePos[2*pI]=px;fl.particlePos[2*pI+1]=py;fl.particleVel[2*pI]=pvx;fl.particleVel[2*pI+1]=pvy;}}
+    function enforceParticleOctagonCollisionFF(fl,sOV,oN){ const rst=DAMPING,rTh=fl.particleRadius*0.5;for(let pI=0;pI<fl.numParticles;pI++){let px=fl.particlePos[2*pI],py=fl.particlePos[2*pI+1],pvx=fl.particleVel[2*pI],pvy=fl.particleVel[2*pI+1];for(let i=0;i<8;i++){const v1=sOV[i],n=oN[i],dist=(px-v1.x)*n.x+(py-v1.y)*n.y;if(dist<rTh){const pen=rTh-dist + 1e-5; px+=pen*n.x;py+=pen*n.y;const vn=pvx*n.x+pvy*n.y;if(vn<0){pvx-=(1+rst)*vn*n.x;pvy-=(1+rst)*vn*n.y;}}}fl.particlePos[2*pI]=px;fl.particlePos[2*pI+1]=py;fl.particleVel[2*pI]=pvx;fl.particleVel[2*pI+1]=pvy;}}
     
     function init() { 
         setupOctagonGeometry(); 
@@ -405,7 +405,7 @@
             } 
         } 
         let placedParticles = 0; let attempts = 0; 
-        const initialParticleVelScale = CELL_SIZE_X * 0.0005; // Reduced initial random velocity further
+        const initialParticleVelScale = CELL_SIZE_X * 0.0005; // Very small initial random velocity
         const placeMargin = particleRadiusPx * 3; 
         while (placedParticles < NUM_PARTICLES && attempts < NUM_PARTICLES * 8000) { 
             const px_sim = placeMargin + Math.random() * (GRID_AREA_SIZE - 2 * placeMargin); 
@@ -438,34 +438,15 @@
             let screenOrientation = (window.innerHeight > window.innerWidth) ? "portrait" : "landscape";
             let targetSimGx, targetSimGy;
             
-            // DESIRED MAPPING from your description:
-            // Tilt phone Right (positive device X-axis generally points right): Fluid RIGHT on screen (positive simulation X).
-            // Tilt phone Top Edge Towards User (positive device Y-axis generally points to top of phone): Fluid UP on screen (negative simulation Y).
-            
             if (screenOrientation === "portrait") {
-                // If tilting right makes rawX positive, this is correct for fluid right.
-                targetSimGx = rawX * ACCEL_SCALING_FACTOR;
-
-                // If tilting top edge towards user makes rawY negative (common),
-                // and we want fluid UP (negative simGy), then this is correct.
-                // If tilting top edge towards user makes rawY positive, then this needs to be -rawY.
-                targetSimGy = rawY * ACCEL_SCALING_FACTOR; 
-            } else { 
-                // Landscape (assuming phone rotated 90 deg CCW, home button to the right)
-                // Device Y-axis (was top edge) is now along screen's X-axis (pointing right)
-                // If tilting this new "top" (original right side of phone) away from user makes rawY positive,
-                // then this makes fluid go right.
+                targetSimGx = -rawX * ACCEL_SCALING_FACTOR; // Inverted X
+                targetSimGy = rawY * ACCEL_SCALING_FACTOR;  // Direct Y
+            } else { // Landscape (home button to the right)
                 targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
-                
-                // Device X-axis (was right edge) is now along screen's Y-axis (pointing up)
-                // If tilting this new "right" (original bottom of phone) down makes rawX negative,
-                // and we want fluid to go UP, then this is correct.
-                targetSimGy = rawX * ACCEL_SCALING_FACTOR; // This was -rawX. If rawX is now "up" the screen, then positive rawX should be negative simGy.
-                                                           // So, if +rawX is screen-up, then this is -rawX for fluid-up.
-                                                           // Let's test with rawX * ACCEL_SCALING_FACTOR first for landscape Y.
+                targetSimGy = rawX * ACCEL_SCALING_FACTOR; // rawX in this landscape becomes "down the screen" if +rawX was right-edge-down in portrait
             }
             
-            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; // Add base (currently 0, but can be re-enabled)
+            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
 
             currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
             currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
