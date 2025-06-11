@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Octagonal LED FLIP Fluid - Accelerometer X-Axis Fix</title>
+<title>Octagonal LED FLIP Fluid - Accelerometer X-Flip Test</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
@@ -32,7 +32,7 @@
         }
     }
 
-    // --- Configuration ---
+    // --- Configuration (Copied from your "BEST VERSION.html" which you said this last one was based on) ---
     const GRID_DIM_X = 16; const GRID_DIM_Y = 16;
     const CORNER_CUT_GEOMETRIC = 5; 
     const CORNER_CUT_FOR_LEDS = 4;  
@@ -51,7 +51,7 @@
     if (LED_PADDING_Y < 0) { console.warn("LED size fallback"); const PADDING_RATIO = 0.15; LED_PADDING_X = CELL_SIZE_X * PADDING_RATIO; LED_PADDING_Y = CELL_SIZE_Y * PADDING_RATIO; LED_SIZE_X = CELL_SIZE_X - LED_PADDING_X * 2; LED_SIZE_Y = CELL_SIZE_Y - LED_PADDING_Y * 2; }
 
     const NUM_PARTICLES = 300; 
-    const BASE_GRAVITY_Y_ACCELERATION = 0.8; 
+    const BASE_GRAVITY_Y_ACCELERATION = 0.8; // From your "BEST VERSION"
     const DAMPING = 0.2;                           
     const FIXED_TIME_STEP = 1/120;                 
     const MAX_VEL_CELLS_PER_STEP = 0.5;            
@@ -75,7 +75,7 @@
     let flipFluid = null;
     const FLIP_FLUID_DENSITY = 1.0; 
     const FLIP_PARTICLE_RADIUS_FACTOR = 0.3; 
-    const simParams = {
+    const simParams = { // From your "BEST VERSION"
         flipRatio: 0.2,          
         numPressureIters: 150,    
         numParticleIters: 4,      
@@ -86,8 +86,8 @@
 
     let currentSimGravityX = 0;
     let currentSimGravityY = BASE_GRAVITY_Y_ACCELERATION; 
-    const ACCEL_SCALING_FACTOR = 15; 
-    const GRAVITY_SMOOTHING_FACTOR = 0.4; 
+    const ACCEL_SCALING_FACTOR = 15; // From your "BEST VERSION"
+    const GRAVITY_SMOOTHING_FACTOR = 0.4; // From your "BEST VERSION"
 
 
     function clamp(x, min, max) { if (x < min) return min; else if (x > max) return max; else return x; }
@@ -439,21 +439,24 @@
             let targetSimGx, targetSimGy;
             
             if (screenOrientation === "portrait") {
-                targetSimGx = rawX * ACCEL_SCALING_FACTOR; // If tilting right makes rawX positive, this pushes fluid right.
-                targetSimGy = rawY * ACCEL_SCALING_FACTOR; // If tilting top AWAY from user makes rawY positive, this pushes fluid DOWN.
-                                                          // To make fluid go UP when top edge tilted TOWARDS USER (usually negative rawY),
-                                                          // you might need targetSimGy = rawY * ACCEL_SCALING_FACTOR (since -rawY * +scale = -simY force = UP)
-                                                          // OR targetSimGy = -rawY * ACCEL_SCALING_FACTOR if your rawY sign is opposite.
-                                                          // For now, using direct mapping. rawY positive -> simY positive (down)
-            } else { // Landscape (assuming primary: home button right, phone rotated 90 deg CCW from portrait)
-                targetSimGx = rawY * ACCEL_SCALING_FACTOR; // Device Y (now horizontal right) directly maps to sim X
-                targetSimGy = -rawX * ACCEL_SCALING_FACTOR; // Device X (now vertical up) maps to sim Y (inverted, so +rawX (device right/screen top down) results in -simY (up))
-                                                            // This landscape Y might be inverted for your desire.
-                                                            // If +rawX (device right-edge-down in portrait, now top-edge-down in landscape) should make fluid go DOWN (+simY),
-                                                            // then targetSimGy should be rawX * ACCEL_SCALING_FACTOR
+                // Fluid moves right (+simGx) when device's right edge is tilted down (+rawX by convention)
+                targetSimGx = rawX * ACCEL_SCALING_FACTOR;
+                // Fluid moves UP screen (-simGy) when device's top edge is tilted TOWARDS user (negative rawY by convention)
+                targetSimGy = rawY * ACCEL_SCALING_FACTOR; 
+            } else { // Landscape (assuming phone rotated 90 deg CCW, home button to the right)
+                // Device Y-axis (was top edge) is now along screen's X-axis (pointing right).
+                // If positive rawY was "top away" in portrait, it's now "right side of screen tilted away/up".
+                // To make fluid go RIGHT on screen (+simGx), use rawY.
+                targetSimGx = rawY * ACCEL_SCALING_FACTOR; 
+                
+                // Device X-axis (was right edge) is now along screen's Y-axis (pointing up).
+                // If positive rawX was "right edge down" in portrait, it's now "top of screen tilted down".
+                // To make fluid go UP on screen (-simGy) when top of landscape screen is tilted TOWARDS user (original left edge down, negative rawX),
+                // use rawX.
+                targetSimGy = rawX * ACCEL_SCALING_FACTOR; 
             }
             
-            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; // Add base gravity (currently 0, so no effect)
+            targetSimGy += BASE_GRAVITY_Y_ACCELERATION; 
 
             currentSimGravityX = GRAVITY_SMOOTHING_FACTOR * targetSimGx + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityX;
             currentSimGravityY = GRAVITY_SMOOTHING_FACTOR * targetSimGy + (1 - GRAVITY_SMOOTHING_FACTOR) * currentSimGravityY;
